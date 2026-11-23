@@ -4,6 +4,7 @@ import AppSidebar from './components/AppSidebar.vue'
 import LoginPanel from './components/LoginPanel.vue'
 import VitalityModule from './modules/vitality/VitalityModule.vue'
 import RepublishModule from './modules/republish/RepublishModule.vue'
+import ArchiveModule from './modules/archive/ArchiveModule.vue'
 import {
   hasValidSession,
   isCloudConfigReady,
@@ -116,6 +117,12 @@ onMounted(boot)
         />
         <RepublishModule
           v-else-if="currentTab === 'republish'"
+          :config="config"
+          :session="session"
+          :on-session="onSession"
+        />
+        <ArchiveModule
+          v-else-if="currentTab === 'archive'"
           :config="config"
           :session="session"
           :on-session="onSession"

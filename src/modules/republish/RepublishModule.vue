@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { createCloudStore } from '../../services/cloudState.js'
 import { createRepublishStore } from '../../engine/republishStore.js'
+import PendingPanel from './PendingPanel.vue'
 
 const props = defineProps({
   config: { type: Object, required: true },
@@ -254,6 +255,8 @@ onUnmounted(() => {
     <section v-if="pageError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-danger">
       {{ pageError }}
     </section>
+
+    <PendingPanel :config="config" :session="session" :on-session="onSession" />
 
     <section class="grid gap-3 md:grid-cols-3">
       <div class="apple-card flex items-center justify-between p-5">

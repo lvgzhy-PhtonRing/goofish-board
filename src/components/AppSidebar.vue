@@ -9,6 +9,7 @@ const emit = defineEmits(['select', 'logout'])
 const items = [
   { id: 'vitality', name: '商品活力', icon: 'fa-solid fa-chart-simple' },
   { id: 'republish', name: '重发看板', icon: 'fa-solid fa-rotate' },
+  { id: 'archive', name: '商品档案', icon: 'fa-solid fa-clock-rotate-left' },
 ]
 
 function tone(tab, currentTab) {
