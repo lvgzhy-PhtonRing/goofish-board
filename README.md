@@ -1,6 +1,6 @@
 # goofish-board（店铺管理）
 
-闲鱼商品活力与重发看板的独立部署站（Vue 3 纯 JS + Vite + Tailwind + FontAwesome），与 [YSP App](https://lvgzhy-phthonring.github.io/Ysp-app/) 双向互链。
+闲鱼商品活力与重发看板的独立部署站（Vue 3 纯 JS + Vite + Tailwind + FontAwesome），与 [YSP App](https://lvgzhy-phtonring.github.io/Ysp-app/) 双向互链。
 
 ## 功能
 

@@ -27,23 +27,26 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Create cloud-config.json from secret
+      - name: Create cloud-config.json from secret (whitelist only)
         env:
           CLOUD_CONFIG_JSON: ${{ secrets.CLOUD_CONFIG_JSON }}
         run: |
           node <<'NODE'
           const fs = require('node:fs')
-          if (!process.env.CLOUD_CONFIG_JSON) process.exit(0)
-          const config = JSON.parse(process.env.CLOUD_CONFIG_JSON)
-          const key = String(config.publishableKey || config.supabaseAnonKey || config.anonKey || '').trim()
+          if (!process.env.CLOUD_CONFIG_JSON) throw new Error('CLOUD_CONFIG_JSON secret is required')
+          const raw = JSON.parse(process.env.CLOUD_CONFIG_JSON)
+          const supabaseUrl = String(raw.supabaseUrl || raw.url || '').trim()
+          const key = String(raw.publishableKey || raw.supabaseAnonKey || raw.anonKey || '').trim()
           let role
           try { role = JSON.parse(Buffer.from(key.split('.')[1], 'base64url')).role } catch {}
+          if (!supabaseUrl) throw new Error('supabaseUrl is required')
           if (!key.startsWith('sb_publishable_') && role !== 'anon') throw new Error('Cloud config requires a public Supabase key')
-          fs.writeFileSync('public/cloud-config.json', JSON.stringify(config))
+          // 白名单重建：任何多余字段（如 service key）都不会进入公开产物
+          fs.writeFileSync('public/cloud-config.json', JSON.stringify({ supabaseUrl, publishableKey: key }))
           NODE
 
       - name: Install deps
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       - name: Test
         run: npm test
@@ -51,8 +54,9 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Copy public files
-        run: cp -r public/* dist/ || true
+      - name: Assert public config contains only publishable fields
+        run: |
+          node -e "const c=require('./dist/cloud-config.json');const k=Object.keys(c).sort().join();if(k!=='publishableKey,supabaseUrl'){console.error('unexpected keys:',k);process.exit(1)}"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

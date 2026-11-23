@@ -219,7 +219,10 @@ export async function saveRow(config, table, session, payload, expectedRevision,
   }
 
   const insertRow = { id: 'main', payload, revision: 1 }
-  if (nextSession.user?.id) insertRow.owner_id = nextSession.user.id
+  if (!nextSession.user?.id) {
+    throw new Error('登录会话缺少用户信息，请重新登录后再同步')
+  }
+  insertRow.owner_id = nextSession.user.id
   const resp = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${table}`, {
     method: 'POST',
     headers,

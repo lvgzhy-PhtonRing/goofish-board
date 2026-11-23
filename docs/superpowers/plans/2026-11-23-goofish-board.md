@@ -247,7 +247,7 @@ grant select, insert, update, delete on public.goofish_vitality, public.goofish_
 - Modify: `D:\Projects\ysp-app\src\components\AppSidebar.vue`（采购组 rushcar 按钮下方插入外链）
 
 **Interfaces:**
-- Produces: `<a href="https://lvgzhy-phthonring.github.io/goofish-board/" target="_blank" rel="noopener">`，样式与侧边栏按钮同款（`px-4 py-3 rounded-xl text-base font-bold flex items-center gap-3`，`fa-store` 图标），文案「店铺管理」。
+- Produces: `<a href="https://lvgzhy-phtonring.github.io/goofish-board/" target="_blank" rel="noopener">`，样式与侧边栏按钮同款（`px-4 py-3 rounded-xl text-base font-bold flex items-center gap-3`，`fa-store` 图标），文案「店铺管理」。
 
 - [ ] **Step 1: 模板插入**（`v-if="tab.id === 'rushcar'"` 同级渲染外链）。
 - [ ] **Step 2: 验证** `npm run build` 通过；视觉与「美淘记录」对齐；其余不动。
@@ -256,7 +256,7 @@ grant select, insert, update, delete on public.goofish_vitality, public.goofish_
 
 **Files:**
 - Create: `.github/workflows/deploy.yml`（照抄 ysp-app，`CLOUD_CONFIG_JSON` secret 校验仅 publishable key）、`public/cloud-config.example.json`、`README.md`
-- Modify: `src/App.vue` 底部「返回主程序」→ `https://lvgzhy-phthonring.github.io/Ysp-app/`
+- Modify: `src/App.vue` 底部「返回主程序」→ `https://lvgzhy-phtonring.github.io/Ysp-app/`
 
 - [ ] **Step 1: workflow + 示例配置**。
 - [ ] **Step 2: `gh repo create`（public）+ push + 设置 Pages（GitHub Actions 源）+ 配置 secret `CLOUD_CONFIG_JSON`**。

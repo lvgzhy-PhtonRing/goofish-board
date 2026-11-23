@@ -68,7 +68,7 @@ async function submit() {
       </form>
 
       <a
-        href="https://lvgzhy-phthonring.github.io/Ysp-app/"
+        href="https://lvgzhy-phtonring.github.io/Ysp-app/"
         target="_blank"
         rel="noopener"
         class="mt-5 flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-primary"

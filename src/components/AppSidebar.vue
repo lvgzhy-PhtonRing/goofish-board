@@ -46,7 +46,7 @@ function tone(tab, currentTab) {
     <div class="space-y-2 border-t border-gray-100 p-4">
       <div class="truncate px-1 text-[11px] text-gray-400">{{ email }}</div>
       <a
-        href="https://lvgzhy-phthonring.github.io/Ysp-app/"
+        href="https://lvgzhy-phtonring.github.io/Ysp-app/"
         target="_blank"
         rel="noopener"
         class="flex w-full items-center gap-2 rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
