@@ -43,11 +43,21 @@ describe('supabaseClient', () => {
     await expect(signIn(config, 'a', 'b')).rejects.toThrow('登录失败')
   })
 
-  it('returns revision 0 when the row does not exist', async () => {
+  it('returns revision 0 and exists=false when the row does not exist', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([])))
     const result = await loadRow(config, 'goofish_board_state', session)
     expect(result.revision).toBe(0)
+    expect(result.exists).toBe(false)
     expect(result.payload).toBeNull()
+  })
+
+  it('clears the session and raises AUTH_EXPIRED on 401', async () => {
+    const onSession = vi.fn()
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ message: 'JWT expired' }, 401)))
+    await expect(loadRow(config, 'goofish_board_state', session, { onSession })).rejects.toMatchObject({
+      code: 'AUTH_EXPIRED',
+    })
+    expect(onSession).toHaveBeenCalledWith(null)
   })
 
   it('flags a revision conflict when the patch matches nothing', async () => {
@@ -60,11 +70,22 @@ describe('supabaseClient', () => {
   it('inserts the first row with revision 1 and owner id', async () => {
     const fetchMock = vi.fn(async () => jsonResponse([{ payload: { a: 1 }, revision: 1 }], 201))
     vi.stubGlobal('fetch', fetchMock)
-    const result = await saveRow(config, 'goofish_board_state', session, { a: 1 }, 0)
+    const result = await saveRow(config, 'goofish_board_state', session, { a: 1 }, 0, { exists: false })
     expect(result.revision).toBe(1)
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(body[0].revision).toBe(1)
     expect(body[0].owner_id).toBe('u1')
+  })
+
+  it('patches an existing row using revision=eq.N and increments', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse([{ payload: { a: 2 }, revision: 3 }]))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await saveRow(config, 'goofish_board_state', session, { a: 2 }, 2)
+
+    expect(result.revision).toBe(3)
+    expect(fetchMock.mock.calls[0][0]).toContain('revision=eq.2')
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.revision).toBe(3)
   })
 
   it('retries revision conflicts', async () => {

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { loadRow } from '../../services/supabaseClient.js'
+import { parseNumber } from '../../engine/republish.js'
 
 const props = defineProps({
   config: { type: Object, required: true },
@@ -35,9 +36,12 @@ const items = computed(() => {
   list.sort((a, b) => {
     const av = a[key]
     const bv = b[key]
-    const na = Number(av)
-    const nb = Number(bv)
-    if (!Number.isNaN(na) && !Number.isNaN(nb)) return (na - nb) * dir
+    const na = parseNumber(av)
+    const nb = parseNumber(bv)
+    if (na !== null && nb !== null) return (na - nb) * dir
+    // 非数值（含缺失指标）统一排在末尾，保证比较器可传递
+    if (na !== null) return -1
+    if (nb !== null) return 1
     return String(av ?? '').localeCompare(String(bv ?? '')) * dir
   })
   return list
@@ -112,7 +116,7 @@ onMounted(load)
     </section>
 
     <template v-else>
-      <div class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
+      <div v-if="payload" class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
         <span><i class="fa-regular fa-clock mr-1" />数据时间：{{ fetchedAt }}</span>
         <span>口径：{{ range }}</span>
         <span :class="complete ? 'text-success' : 'text-warning'">

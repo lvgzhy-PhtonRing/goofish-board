@@ -156,9 +156,24 @@ export async function signOut(config, session) {
 async function ensureSession(config, session, onSession) {
   if (!session?.accessToken) return null
   if (hasValidSession(session)) return session
-  const refreshed = await refreshSession(config, session)
-  if (typeof onSession === 'function') onSession(refreshed)
-  return refreshed
+  try {
+    const refreshed = await refreshSession(config, session)
+    if (typeof onSession === 'function') onSession(refreshed)
+    return refreshed
+  } catch {
+    if (typeof onSession === 'function') onSession(null)
+    const error = new Error('登录已过期，请重新登录')
+    error.code = 'AUTH_EXPIRED'
+    throw error
+  }
+}
+
+async function assertAuthorized(resp, data, onSession) {
+  if (resp.status !== 401 && resp.status !== 403) return
+  if (typeof onSession === 'function') onSession(null)
+  const error = new Error('登录已失效，请重新登录')
+  error.code = 'AUTH_EXPIRED'
+  throw error
 }
 
 function selectQuery(base) {
@@ -179,36 +194,43 @@ export async function loadRow(config, table, session, { onSession } = {}) {
     cache: 'no-store',
   })
   const data = await readJsonResponse(resp)
-  if (!resp.ok) throw buildApiError('读取云端数据失败', resp.status, data)
+  if (!resp.ok) {
+    await assertAuthorized(resp, data, onSession)
+    throw buildApiError('读取云端数据失败', resp.status, data)
+  }
   const rows = Array.isArray(data) ? data : []
-  if (!rows.length) return { payload: null, revision: 0, session: nextSession }
+  if (!rows.length) return { payload: null, revision: 0, exists: false, session: nextSession }
   const row = rows[0]
   return {
     payload: row?.payload ?? null,
     revision: requireRevision(row?.revision ?? 0),
     updatedAt: row?.updated_at || '',
+    exists: true,
     session: nextSession,
   }
 }
 
-/** 乐观锁写入：PATCH revision=eq.N；0 行视为冲突；无行时 INSERT。 */
-export async function saveRow(config, table, session, payload, expectedRevision, { onSession } = {}) {
+/** 乐观锁写入：存在则 PATCH revision=eq.N；0 行视为冲突；不存在则 INSERT。 */
+export async function saveRow(config, table, session, payload, expectedRevision, { onSession, exists = true } = {}) {
   if (!isCloudConfigReady(config)) throw new Error('云端配置不完整')
   const nextSession = await ensureSession(config, session, onSession)
   if (!nextSession?.accessToken) throw new Error('请先登录账号')
   const headers = { ...buildHeaders(config, nextSession.accessToken), Prefer: 'return=representation' }
 
-  if (Number.isSafeInteger(expectedRevision) && expectedRevision > 0) {
+  if (exists) {
     const params = new URLSearchParams()
     params.set('id', 'eq.main')
-    params.set('revision', `eq.${expectedRevision}`)
+    params.set('revision', `eq.${requireRevision(expectedRevision)}`)
     const resp = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${table}?${params.toString()}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ payload, revision: expectedRevision + 1 }),
     })
     const data = await readJsonResponse(resp)
-    if (!resp.ok) throw buildApiError('写入云端数据失败', resp.status, data)
+    if (!resp.ok) {
+      await assertAuthorized(resp, data, onSession)
+      throw buildApiError('写入云端数据失败', resp.status, data)
+    }
     const rows = Array.isArray(data) ? data : []
     if (!rows.length) throw revisionConflict()
     return {
@@ -218,11 +240,10 @@ export async function saveRow(config, table, session, payload, expectedRevision,
     }
   }
 
-  const insertRow = { id: 'main', payload, revision: 1 }
   if (!nextSession.user?.id) {
     throw new Error('登录会话缺少用户信息，请重新登录后再同步')
   }
-  insertRow.owner_id = nextSession.user.id
+  const insertRow = { id: 'main', payload, revision: 1, owner_id: nextSession.user.id }
   const resp = await fetchWithTimeout(`${config.supabaseUrl}/rest/v1/${table}`, {
     method: 'POST',
     headers,
@@ -230,7 +251,10 @@ export async function saveRow(config, table, session, payload, expectedRevision,
   })
   const data = await readJsonResponse(resp)
   if (resp.status === 409) throw revisionConflict()
-  if (!resp.ok) throw buildApiError('创建云端数据行失败', resp.status, data)
+  if (!resp.ok) {
+    await assertAuthorized(resp, data, onSession)
+    throw buildApiError('创建云端数据行失败', resp.status, data)
+  }
   const rows = Array.isArray(data) ? data : []
   if (!rows.length) throw new Error('云端初始化未返回数据')
   return {

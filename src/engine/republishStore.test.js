@@ -38,7 +38,11 @@ function memoryBackend(initial = null) {
   let payload = initial ? JSON.parse(JSON.stringify(initial)) : null
   let revision = initial ? 1 : 0
   return {
-    readState: async () => ({ payload, revision }),
+    readState: async () => ({
+      payload: payload ? JSON.parse(JSON.stringify(payload)) : null,
+      revision,
+      exists: payload !== null,
+    }),
     writeState: async (next, expected) => {
       if (expected !== revision) {
         const error = new Error('conflict')
@@ -51,6 +55,32 @@ function memoryBackend(initial = null) {
     },
     get payload() {
       return payload
+    },
+    get revision() {
+      return revision
+    },
+  }
+}
+
+function conflictingBackend(failures) {
+  const inner = memoryBackend()
+  let remaining = failures
+  return {
+    readState: inner.readState,
+    writeState: async (next, expected) => {
+      if (remaining > 0) {
+        remaining -= 1
+        const error = new Error('conflict')
+        error.code = 'CLOUD_REVISION_CONFLICT'
+        throw error
+      }
+      return inner.writeState(next, expected)
+    },
+    get payload() {
+      return inner.payload
+    },
+    get revision() {
+      return inner.revision
     },
   }
 }
@@ -485,8 +515,7 @@ describe('offline / repost', () => {
 })
 
 describe('cancelItem', () => {
-  it('requires sunday and persists history', async () => {
-    const sunday = new Date(2026, 10, 29, 12)
+  it('requires sunday and persists history', async () => {    const sunday = new Date(2026, 10, 29, 12)
     const monday = new Date(2026, 10, 30, 12)
     const initial = {
       pool: {
@@ -516,5 +545,126 @@ describe('cancelItem', () => {
     const result = await store.cancelItem('recovered', sunday)
     expect(result.status).toBe('CANCELED')
     expect(logs(backend).filter((entry) => entry.itemId === 'recovered').at(-1).action).toBe('CANCEL')
+  })
+})
+
+describe('optimistic lock', () => {
+  it('retries revision conflicts and persists exactly once', async () => {
+    const backend = conflictingBackend(2)
+    const vitality = cachePayload(NOW, [makeItem('conflict-item', NOW)])
+    const store = createRepublishStore({
+      readState: backend.readState,
+      writeState: backend.writeState,
+      readVitality: async () => vitality,
+    })
+
+    const dashboard = await store.getDashboard(NOW)
+
+    expect(dashboard.queue.map((row) => row.itemId)).toContain('conflict-item')
+    expect(backend.revision).toBe(1)
+    expect(backend.payload.pool['conflict-item'].status).toBe('QUEUING')
+  })
+
+  it('throws after exhausting retries without writing', async () => {
+    const backend = conflictingBackend(3)
+    const vitality = cachePayload(NOW, [makeItem('exhausted-item', NOW)])
+    const store = createRepublishStore({
+      readState: backend.readState,
+      writeState: backend.writeState,
+      readVitality: async () => vitality,
+    })
+
+    await expect(store.getDashboard(NOW)).rejects.toMatchObject({ code: 'CLOUD_REVISION_CONFLICT' })
+    expect(backend.payload).toBeNull()
+  })
+
+  it('does not write the cloud when a read-only dashboard load changes nothing', async () => {
+    const backend = memoryBackend()
+    const vitality = cachePayload(NOW, [makeItem('stable-item', NOW)])
+    const store = createRepublishStore({
+      readState: backend.readState,
+      writeState: backend.writeState,
+      readVitality: async () => vitality,
+    })
+
+    await store.getDashboard(NOW)
+    const revisionAfterFirst = backend.revision
+    await store.getDashboard(NOW)
+
+    expect(backend.revision).toBe(revisionAfterFirst)
+  })
+})
+
+describe('additional boundary cases', () => {
+  it('allows canceling a RETESTING item after sunday recovery', async () => {
+    const sunday = new Date(2026, 10, 29, 12)
+    const { store, setVitality } = setup(sunday, [
+      makeItem('retest-recovered', sunday, { ageDays: 10, exposure: '500', views: '4' }),
+    ])
+    await store.getDashboard(sunday)
+    await store.startOptimization('retest-recovered', sunday)
+    setVitality(
+      [makeItem('retest-recovered', sunday, { ageDays: 10, exposure: '200', views: '3' })],
+      {},
+      sunday,
+    )
+
+    const dashboard = await store.getDashboard(sunday)
+    const item = dashboard.retesting.find((row) => row.itemId === 'retest-recovered')
+    expect(item.recovered).toBe(true)
+
+    const result = await store.cancelItem('retest-recovered', sunday)
+    expect(result.status).toBe('CANCELED')
+  })
+
+  it('rejects a new id that already exists in the pool', async () => {
+    const initial = {
+      pool: {
+        'old-id': {
+          itemId: 'old-id',
+          lineageId: 'old-id',
+          title: 'old',
+          status: 'OFFLINED',
+          republishRound: 0,
+          offlinedAt: formatIso(new Date(NOW.getTime() - 24 * 3_600_000)),
+        },
+        'new-id': {
+          itemId: 'new-id',
+          lineageId: 'new-id',
+          title: 'existing',
+          status: 'CANCELED',
+          republishRound: 0,
+        },
+      },
+      logs: [],
+      nextLogId: 1,
+    }
+    const { store } = setup(NOW, [], { initial })
+
+    await expect(store.confirmRepost('old-id', 'new-id', NOW)).rejects.toMatchObject({
+      code: 'ITEM_ID_EXISTS',
+    })
+  })
+
+  it('rejects repost when lineage already reached two rounds', async () => {
+    const initial = {
+      pool: {
+        'old-id': {
+          itemId: 'old-id',
+          lineageId: 'root',
+          title: 'old',
+          status: 'OFFLINED',
+          republishRound: 2,
+          offlinedAt: formatIso(new Date(NOW.getTime() - 24 * 3_600_000)),
+        },
+      },
+      logs: [],
+      nextLogId: 1,
+    }
+    const { store } = setup(NOW, [], { initial })
+
+    await expect(store.confirmRepost('old-id', 'new-id', NOW)).rejects.toMatchObject({
+      code: 'ROUND_LIMIT',
+    })
   })
 })

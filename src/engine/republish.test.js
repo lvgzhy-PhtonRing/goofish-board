@@ -11,11 +11,11 @@ import {
   parseVitalityCache,
 } from './republish.js'
 
-const NOW = new Date('2026-11-23T12:00:00Z')
+const NOW = new Date(2026, 10, 23, 12) // 本地 2026-11-23 12:00（周一）
 
 function item(itemId, { ageDays, exposure, views, inquiry = '0', payments = '0' }) {
-  const created = new Date(NOW.getTime() - ageDays * 86_400_000)
-  const date = `${created.getUTCFullYear()}-${String(created.getUTCMonth() + 1).padStart(2, '0')}-${String(created.getUTCDate()).padStart(2, '0')}`
+  const created = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() - ageDays)
+  const date = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`
   return {
     itemId,
     title: `item ${itemId}`,
@@ -64,19 +64,23 @@ describe('parseVitalityCache', () => {
       available: false,
       reason: 'TIMESTAMP_INVALID',
     })
-    expect(parseVitalityCache(cache('2026-11-23T13:00:00+00:00'), NOW)).toMatchObject({
+    expect(parseVitalityCache(cache(new Date(NOW.getTime() + 3_600_000).toISOString()), NOW)).toMatchObject({
       available: false,
       reason: 'TIMESTAMP_IN_FUTURE',
     })
-    expect(parseVitalityCache(cache('2026-11-21T23:59:59+00:00'), NOW)).toMatchObject({
+    expect(parseVitalityCache(cache(new Date(NOW.getTime() - 37 * 3_600_000).toISOString()), NOW)).toMatchObject({
       available: false,
       reason: 'CACHE_STALE',
     })
-    expect(parseVitalityCache(cache('2026-11-23T11:00:00+00:00', { range: '1' }), NOW)).toMatchObject({
+    expect(
+      parseVitalityCache(cache(new Date(NOW.getTime() - 3_600_000).toISOString(), { range: '1' }), NOW),
+    ).toMatchObject({
       available: false,
       reason: 'RANGE_NOT_7D',
     })
-    expect(parseVitalityCache(cache('2026-11-23T11:00:00+00:00', { complete: false }), NOW)).toMatchObject({
+    expect(
+      parseVitalityCache(cache(new Date(NOW.getTime() - 3_600_000).toISOString(), { complete: false }), NOW),
+    ).toMatchObject({
       available: false,
       reason: 'CACHE_INCOMPLETE',
     })

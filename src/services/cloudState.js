@@ -8,22 +8,22 @@ export const BOARD_TABLE = 'goofish_board_state'
  * @param {object} options
  * @param {object} options.config  normalizeCloudConfig 结果
  * @param {() => object|null} options.getSession  当前会话（可能被 refresh 替换）
- * @param {(session: object) => void} options.onSession  会话更新回调
+ * @param {(session: object|null) => void} options.onSession  会话更新/失效回调（null 表示需重新登录）
  */
 export function createCloudStore({ config, getSession, onSession }) {
   return {
     async readState() {
-      const { payload, revision } = await loadRow(config, BOARD_TABLE, getSession(), { onSession })
-      return { payload, revision }
+      const { payload, revision, exists } = await loadRow(config, BOARD_TABLE, getSession(), { onSession })
+      return { payload, revision, exists }
     },
-    async writeState(state, revision) {
+    async writeState(state, revision, exists) {
       const { payload, revision: nextRevision } = await saveRow(
         config,
         BOARD_TABLE,
         getSession(),
         state,
         revision,
-        { onSession },
+        { onSession, exists },
       )
       return { payload, revision: nextRevision }
     },

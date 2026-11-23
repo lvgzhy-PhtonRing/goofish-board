@@ -27,7 +27,11 @@ export function parseNumber(value) {
 export function parseDateTime(value) {
   if (typeof value !== 'string' || !value.trim()) return null
   const text = value.trim()
-  const normalized = text.includes('T') ? text : text.replace(' ', 'T')
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? `${text}T00:00:00`
+    : text.includes('T')
+      ? text
+      : text.replace(' ', 'T')
   const date = new Date(normalized)
   return Number.isNaN(date.getTime()) ? null : date
 }

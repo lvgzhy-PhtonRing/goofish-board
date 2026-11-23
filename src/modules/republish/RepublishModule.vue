@@ -99,6 +99,7 @@ async function runAction(key, action, success) {
     return true
   } catch (error) {
     toast(error?.message || '操作失败', 'danger')
+    await loadDashboard()
     return false
   } finally {
     actionKey.value = ''
@@ -264,7 +265,7 @@ onUnmounted(() => {
         </div>
         <button
           class="btn btn-primary btn-sm"
-          :disabled="isLoading || actionKey === 'new-listing' || !!quota?.locked"
+          :disabled="isLoading || !!actionKey || !!quota?.locked"
           @click="runAction('new-listing', () => store.recordNewListing(new Date()), '已记录一次真实上新')"
         >
           <i class="fa-solid" :class="actionKey === 'new-listing' ? 'fa-circle-notch animate-spin' : 'fa-plus'" />
@@ -425,7 +426,7 @@ onUnmounted(() => {
             <div class="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
               <button
                 class="btn btn-danger btn-sm"
-                :disabled="!dataStatus?.available || !!quota?.locked || !checklistFor(item.itemId).offline || !checklistFor(item.itemId).materials || actionKey === `offline:${item.itemId}`"
+                :disabled="!dataStatus?.available || !!quota?.locked || !checklistFor(item.itemId).offline || !checklistFor(item.itemId).materials || !!actionKey"
                 @click="runAction(`offline:${item.itemId}`, () => store.confirmOffline(item.itemId, { offlineConfirmed: true, materialsPrepared: true }, new Date()), '已记录下架静置')"
               >
                 <i class="fa-solid" :class="actionKey === `offline:${item.itemId}` ? 'fa-circle-notch animate-spin' : 'fa-arrow-down'" />
@@ -624,13 +625,13 @@ onUnmounted(() => {
       <span>数据时间：{{ formatDate(dataStatus?.fetched_at) }}</span>
     </footer>
 
-    <div v-if="repostDialogOpen" class="modal-overlay" @click.self="repostDialogOpen = false">
+    <div v-if="repostDialogOpen" class="modal-overlay" tabindex="-1" @click.self="repostDialogOpen = false" @keydown.esc="repostDialogOpen = false">
       <div class="glass-modal w-full max-w-md p-6">
         <h3 class="text-lg font-bold text-gray-900">确认已重发</h3>
         <p class="mt-1 text-sm text-gray-500">请录入闲鱼生成的新商品 ID，系统会关联原商品谱系并累计轮次。</p>
         <label class="mt-4 block">
           <span class="mb-1 block text-xs font-semibold text-gray-500">新商品 ID</span>
-          <input v-model="newItemId" class="apple-input" inputmode="numeric" autocomplete="off" placeholder="粘贴新版商品 ID" />
+          <input v-model="newItemId" class="apple-input" inputmode="numeric" autocomplete="off" placeholder="粘贴新版商品 ID" autofocus />
         </label>
         <p class="mt-2 text-xs text-gray-400">新 ID 必须不同于旧 ID，且不能已被使用或出现在当前活力数据中。</p>
         <div class="mt-5 flex justify-end gap-2">

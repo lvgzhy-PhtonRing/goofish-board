@@ -10,6 +10,7 @@ import {
   parseDateTime,
   parseVitalityCache,
 } from './republish.js'
+import { withRetry } from '../services/supabaseClient.js'
 
 const ACTIVE_STATUSES = new Set(['RETESTING', 'QUEUING', 'OFFLINED'])
 const TERMINAL_STATUSES = new Set(['REPOSTED', 'CANCELED', 'ARCHIVED'])
@@ -76,6 +77,8 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       createTime: item.createTime ?? null,
       listingAgeDays: item.listingAgeDays ?? null,
       priorityLevel: item.priority ?? prev.priorityLevel ?? null,
+      // 有意偏差：PRD 要求中性/回升指标保留现有优先级标签，直到用户明确移出。
+      // Python _update_row 会把 priority 写为 NULL；这里保留旧标签以匹配 PRD 展示语义。
       exposure7d: Math.trunc(Number(item.exposure7d) || 0),
       views7d: Math.trunc(Number(item.views7d) || 0),
       ctr7d: Number(item.ctr7d) || 0,
@@ -332,24 +335,17 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     }
   }
 
-  async function mutate(fn) {
-    let lastError = null
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const { payload, revision } = await readState()
+  async function mutate(fn, { skipWriteIfUnchanged = false } = {}) {
+    return withRetry(async () => {
+      const { payload, revision, exists } = await readState()
       const state = normalizeState(payload)
+      const before = skipWriteIfUnchanged ? JSON.stringify(state) : null
       const result = await fn(state)
-      try {
-        await writeState(state, revision)
-        return result
-      } catch (error) {
-        if (error?.code === 'CLOUD_REVISION_CONFLICT') {
-          lastError = error
-          continue
-        }
-        throw error
-      }
-    }
-    throw lastError || new RepublishError('CLOUD_REVISION_CONFLICT', '云端数据已被其他设备更新，请重试')
+      // 只读加载若无任何诊断/池变化，不写云端（避免只读访问推高 revision 与制造冲突）
+      if (skipWriteIfUnchanged && JSON.stringify(state) === before) return result
+      await writeState(state, revision, exists !== false)
+      return result
+    })
   }
 
   async function getDashboard(now = new Date()) {
@@ -364,7 +360,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       const diagnosis = diagnoseItems(cache.items, now, roundById)
       const waiting = syncCandidates(draft, diagnosis, now)
       return { state: draft, diagnosed: diagnosis, waitlist: waiting }
-    })
+    }, { skipWriteIfUnchanged: true })
     return buildDashboard(state, diagnosed, waitlist, cache, now)
   }
 

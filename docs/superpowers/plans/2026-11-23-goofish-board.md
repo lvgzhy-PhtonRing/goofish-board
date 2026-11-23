@@ -93,7 +93,7 @@ grant select, insert, update, delete on public.goofish_vitality, public.goofish_
 ```
 
 - [ ] **Step 3: 建登录用户** — Admin API `POST /auth/v1/admin/users`（service key）创建 `lvgzhy@gmail.com` 固定密码；记录 uid 为 `GOOFISH_OWNER_ID`。
-- [ ] **Step 4: 验证** — 用 publishable key 匿名 SELECT 必须返回空数组（RLS 生效）；用登录 token SELECT 返回空但有权限。
+- [ ] **Step 4: 验证** — 用 publishable key 匿名 SELECT 返回空数组或 401/42501（均证明 RLS 隔离）；用登录 token SELECT 返回空但有权限。
 - [ ] **Step 5: 记录凭据** — 项目 URL / publishable key 写入 `public/cloud-config.example.json`；URL / service key / owner uid / 登录密码 写入 goofish 本地 `.env`（绝不入库）。
 
 ### Task 2: 项目脚手架 + YSP 设计系统

@@ -35,7 +35,7 @@
 | 1.1 | 部署成功 | GitHub Actions → Deploy to GitHub Pages | 最近一次 run 为 success |
 | 1.2 | 页面可达 | `curl -I https://lvgzhy-phtonring.github.io/goofish-board/` | 200 |
 | 1.3 | 配置产物 | `curl .../cloud-config.json` | 200，仅含 `supabaseUrl` + `publishableKey`；**绝无 service key** |
-| 1.4 | 匿名隔离 | 不带登录态 `GET /rest/v1/goofish_vitality?id=eq.main` | 返回 `[]` 或无数据 |
+| 1.4 | 匿名隔离 | 不带登录态 `GET /rest/v1/goofish_vitality?id=eq.main` | 返回 `[]` 或 `401/42501 permission denied`（两种都算隔离成立） |
 | 1.5 | 登录成功 | 错误密码 → 提示；正确密码 → 进入看板 | 错误有提示，正确进入 |
 | 1.6 | secret 边界 | `gh secret list --repo lvgzhy-PhtonRing/goofish-board` | 仅 `CLOUD_CONFIG_JSON` |
 
