@@ -589,7 +589,8 @@ describe('optimistic lock', () => {
 
     await store.getDashboard(NOW)
     const revisionAfterFirst = backend.revision
-    await store.getDashboard(NOW)
+    // 不同时间重复加载：内容未变，不应产生新写入
+    await store.getDashboard(new Date(NOW.getTime() + 60_000))
 
     expect(backend.revision).toBe(revisionAfterFirst)
   })

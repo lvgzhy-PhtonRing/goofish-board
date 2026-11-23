@@ -95,6 +95,11 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       dataUpdatedAt: formatIso(now),
       picUrl: item.picUrl ?? prev.picUrl ?? '',
     }
+    // 内容（除 dataUpdatedAt 外）未变化时不触碰行，避免只读加载每次都推高 revision
+    const strip = (row) => ({ ...row, dataUpdatedAt: undefined })
+    if (prev.itemId && JSON.stringify(strip(prev)) === JSON.stringify(strip(next))) {
+      return prev
+    }
     state.pool[item.itemId] = next
     return next
   }
