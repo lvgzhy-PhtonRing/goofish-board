@@ -1,0 +1,6 @@
+node_modules/
+dist/
+public/cloud-config.json
+.env
+.env.local
+*.log

@@ -1,0 +1,71 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Create cloud-config.json from secret
+        env:
+          CLOUD_CONFIG_JSON: ${{ secrets.CLOUD_CONFIG_JSON }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          if (!process.env.CLOUD_CONFIG_JSON) process.exit(0)
+          const config = JSON.parse(process.env.CLOUD_CONFIG_JSON)
+          const key = String(config.publishableKey || config.supabaseAnonKey || config.anonKey || '').trim()
+          let role
+          try { role = JSON.parse(Buffer.from(key.split('.')[1], 'base64url')).role } catch {}
+          if (!key.startsWith('sb_publishable_') && role !== 'anon') throw new Error('Cloud config requires a public Supabase key')
+          fs.writeFileSync('public/cloud-config.json', JSON.stringify(config))
+          NODE
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Copy public files
+        run: cp -r public/* dist/ || true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
