@@ -74,6 +74,27 @@ const range = computed(() => `近${payload.value?.range || '7'}天`)
 const complete = computed(() => payload.value?.complete !== false)
 const count = computed(() => items.value.length)
 
+function inquiryTone(item) {
+  if (item.metricsMissing) return 'text-gray-300'
+  const value = parseNumber(item.inquiry)
+  if (value === null) return 'text-gray-300'
+  return value > 0 ? 'text-primary' : 'text-gray-400'
+}
+
+function conversionTone(item) {
+  if (item.metricsMissing) return 'text-gray-300'
+  const value = parseFloat(String(item.conversion || '').replace('%', ''))
+  if (!Number.isFinite(value) || value <= 0) return 'text-gray-400'
+  return 'text-success'
+}
+
+function ctrTone(item) {
+  if (item.metricsMissing || item.ctr === null) return 'text-gray-300'
+  if (item.ctr < 0.8) return 'text-danger'
+  if (item.ctr < 1.5) return 'text-warning'
+  return 'text-success'
+}
+
 function toggleSort(key) {
   if (sortKey.value === key) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   else {
@@ -200,9 +221,15 @@ onMounted(load)
                   <span class="whitespace-nowrap">{{ String(cellValue(item, column)).slice(0, 10) }}</span>
                 </template>
                 <template v-else-if="column.key === 'ctr'">
-                  <span :class="item.metricsMissing || item.ctr === null ? 'text-gray-300' : 'font-mono'">
+                  <span :class="ctrTone(item)">
                     {{ item.metricsMissing || item.ctr === null ? '—' : item.ctr.toFixed(2) + '%' }}
                   </span>
+                </template>
+                <template v-else-if="column.key === 'inquiry'">
+                  <span :class="inquiryTone(item)">{{ cellValue(item, column) }}</span>
+                </template>
+                <template v-else-if="column.key === 'conversion'">
+                  <span :class="conversionTone(item)">{{ cellValue(item, column) }}</span>
                 </template>
                 <template v-else-if="column.metric">
                   <span :class="item.metricsMissing ? 'text-gray-300' : 'font-mono'">{{ cellValue(item, column) }}</span>
