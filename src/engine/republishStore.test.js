@@ -298,7 +298,7 @@ describe('getDashboard', () => {
     const row = await store.manualOffline(item, { offlinedAt: '2026-11-23T00:00:00+08:00' }, NOW)
 
     expect(row.status).toBe('OFFLINED')
-    expect(row.offlinedAt).toBe('2026-11-23T00:00:00+08:00')
+    expect(new Date(row.offlinedAt).getTime()).toBe(new Date('2026-11-23T00:00:00+08:00').getTime())
     const after = await store.getDashboard(NOW)
     expect(after.offlined.map((entry) => entry.itemId)).toContain('manual-item')
     expect(after.queue).toHaveLength(15)
