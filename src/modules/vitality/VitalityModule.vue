@@ -15,6 +15,7 @@ const error = ref('')
 const payload = ref(null)
 const sortKey = ref('exposure')
 const sortDir = ref('desc')
+const keyword = ref('')
 
 const columns = [
   { key: 'itemId', label: '商品 ID', align: 'left' },
@@ -30,8 +31,21 @@ const columns = [
   { key: 'conversion', label: '转化率', align: 'center', metric: true },
 ]
 
+const totalCount = computed(() => (Array.isArray(payload.value?.vitality) ? payload.value.vitality.length : 0))
+const isSearching = computed(() => keyword.value.trim().length > 0)
+
 const items = computed(() => {
-  const list = Array.isArray(payload.value?.vitality) ? [...payload.value.vitality] : []
+  let list = Array.isArray(payload.value?.vitality) ? [...payload.value.vitality] : []
+  const text = keyword.value.trim().toLowerCase()
+  if (text) {
+    const priceText = text.replace(/[¥￥\s,]/g, '')
+    list = list.filter((item) => {
+      const title = String(item.title || '').toLowerCase()
+      const itemId = String(item.itemId || '')
+      const price = String(item.price || '')
+      return title.includes(text) || itemId.includes(text) || (priceText !== '' && price.includes(priceText))
+    })
+  }
   const key = sortKey.value
   const dir = sortDir.value === 'asc' ? 1 : -1
   list.sort((a, b) => {
@@ -98,9 +112,12 @@ onMounted(load)
           每件商品的库存、价格与曝光/浏览/询单/支付转化。数据由本地 goofish 程序导入后同步。
         </p>
       </div>
-      <button class="btn btn-outline" :disabled="loading" @click="load">
-        <i class="fa-solid fa-arrows-rotate" :class="loading ? 'animate-spin' : ''" />刷新
-      </button>
+      <div class="flex items-center gap-2">
+        <input v-model="keyword" class="apple-input w-56" type="search" placeholder="搜索名称 / ID / 价格" />
+        <button class="btn btn-outline" :disabled="loading" @click="load">
+          <i class="fa-solid fa-arrows-rotate" :class="loading ? 'animate-spin' : ''" />刷新
+        </button>
+      </div>
     </header>
 
     <section
@@ -123,7 +140,9 @@ onMounted(load)
         <span :class="complete ? 'text-success' : 'text-warning'">
           {{ complete ? '完整' : '不完整（部分页未抓满）' }}
         </span>
-        <span class="ml-auto font-semibold text-gray-700">共 {{ count }} 件</span>
+        <span class="ml-auto font-semibold text-gray-700">
+          共 {{ totalCount }} 件<span v-if="isSearching" class="ml-1 text-primary">（匹配 {{ count }} 件）</span>
+        </span>
       </div>
 
       <div class="apple-card overflow-x-auto p-0">
@@ -149,6 +168,11 @@ onMounted(load)
             <tr v-if="loading">
               <td :colspan="columns.length" class="py-10 text-center text-sm text-gray-400">
                 <i class="fa-solid fa-circle-notch mr-2 animate-spin" />正在读取…
+              </td>
+            </tr>
+            <tr v-else-if="items.length === 0">
+              <td :colspan="columns.length" class="py-10 text-center text-sm text-gray-400">
+                <i class="fa-solid fa-magnifying-glass mr-2" />没有匹配的商品
               </td>
             </tr>
             <tr v-for="item in items" v-else :key="item.itemId">
