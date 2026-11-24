@@ -475,7 +475,7 @@ onUnmounted(() => {
                   :checked="checklistFor(item.itemId).materials"
                   @change="setChecklist(item.itemId, 'materials', $event.target.checked)"
                 />
-                <span>已准备新版首图与标题</span>
+                <span>已准备新版首图与标题（不得沿用原图/原标题，否则按重复铺货降权）</span>
               </label>
               <label
                 v-if="item.queueKind === 'activate'"
