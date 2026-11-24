@@ -132,7 +132,7 @@ function keywordFromTitle(title) {
     }
   }
   let phrase = (start >= 0 ? text.slice(start) : text).trim()
-  if (phrase.length > 18) phrase = phrase.slice(0, 18).trim()
+  if (phrase.length > 22) phrase = phrase.slice(0, 22).trim()
   phrase = phrase.replace(/\s+\d{1,4}$/, '').trim()
   return phrase || '品牌词'
 }
@@ -177,6 +177,8 @@ export function diagnosticAdvice(input, ctrArg, priorityArg) {
         `首图换新角度，标题最前面放「${keyword}」。`,
       `【建议彻底重做首图+重构标题前置词】${engage}。先别改价，优先重拍首图，` +
         `并把「${keyword}」放到标题前 12 字，重发后 72 小时复测。${priceText}`,
+      `【建议彻底重做首图+重构标题前置词】平台给了 ${exp} 次曝光，点击率只有 ${c}（${browse} 次点击）。` +
+        `先换首图，再把「${keyword}」放到标题最前；不要只改价格。`,
     ]
   } else if (queueKind === 'reborn') {
     templates = [
@@ -185,6 +187,8 @@ export function diagnosticAdvice(input, ctrArg, priorityArg) {
         `标题前置「${keyword}」，价格下调 3~5 元后重发。`,
       `【建议微调首图+小幅降价】${ageText}，${engage}。先改标题前置词为「${keyword}」，` +
         `再小幅降价，不必重做详情。`,
+      `【建议微调首图+小幅降价】${engage}，点击率低于 1.5%。把「${keyword}」放到标题前 12 字，` +
+        `首图换细节特写，价格降 3~5 元。`,
     ]
   } else if (queueKind === 'activate') {
     templates = [
@@ -196,6 +200,12 @@ export function diagnosticAdvice(input, ctrArg, priorityArg) {
         `优先用「${keyword}」重写标题并换首图，争取第一波推荐。`,
       `这件 ${age} 天的链接几乎没曝光（${exp} 次）。建议保留价格，先换首图+把「${keyword}」放到标题最前，` +
         `再重发测试 72 小时。${priceText}`,
+      `这件链接不是点击问题，而是曝光太少（${exp} 次）。重发前只做两件事：标题前 12 字放「${keyword}」，` +
+        `首图换白底正面；价格先不动。`,
+      `近 7 天只有 ${exp} 次曝光，说明系统还没给你推荐位。建议按「品牌+编号+车型」重写标题（参考「${keyword}」），` +
+        `并换一张更干净的首图。`,
+      `${ageText || '这件链接'}，曝光 ${exp} 次。老链接重发前必须换首图/标题，否则容易被判重复内容；` +
+        `关键词建议前置「${keyword}」。`,
     ]
   } else if (queueKind === 'healthy') {
     return `点击率 ${c}（${browse}/${exp}）属健康区间，建议改价格/详情或等自然成交，不做重发。`
