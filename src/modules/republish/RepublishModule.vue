@@ -519,7 +519,7 @@ onUnmounted(() => {
           v-for="tab in [
             { key: 'queue', label: '排队中', count: dashboard?.queue.length ?? 0 },
             { key: 'offlined', label: '24h 静置', count: dashboard?.offlined.length ?? 0 },
-            { key: 'protected', label: '保护 / 否决', count: dashboard?.protected.length ?? 0 },
+            { key: 'protected', label: '保护 / 健康', count: dashboard?.protected.length ?? 0 },
           ]"
           :key="tab.key"
           class="rounded-lg py-2.5 text-xs sm:text-sm"
@@ -673,7 +673,7 @@ onUnmounted(() => {
 
       <div v-show="activeTab === 'protected'" class="apple-card">
         <p class="flex items-center gap-2 text-sm font-bold text-gray-800">
-          <i class="fa-solid fa-shield-halved text-gray-500" />保护 / 否决 / 数据不足
+          <i class="fa-solid fa-shield-halved text-gray-500" />保护 / 健康 / 数据不足
         </p>
         <div class="mt-3 space-y-2">
           <div
@@ -688,7 +688,10 @@ onUnmounted(() => {
                 <p class="mt-1 font-mono text-[10px] text-gray-400">{{ item.itemId || '商品 ID 不可用' }}</p>
               </div>
             </div>
-            <span class="rounded bg-gray-200 px-2 py-1 text-[10px] font-bold text-gray-700">
+            <span
+              class="rounded px-2 py-1 text-[10px] font-bold"
+              :class="item.protectionReason === 'HEALTHY' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-700'"
+            >
               {{ reasonText[item.protectionReason] || item.protectionReason || '数据不足' }}
             </span>
             <p v-if="item.advice" class="text-xs text-gray-600 sm:max-w-[40%]">{{ item.advice }}</p>

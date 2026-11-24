@@ -354,6 +354,16 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     for (const row of bucket('PROTECTED')) {
       if (!protectedMap.has(row.itemId)) protectedMap.set(row.itemId, row)
     }
+    for (const row of diagnosed.healthy || []) {
+      const key = row.diagnosticKey || row.itemId
+      if (key && !protectedMap.has(key)) {
+        protectedMap.set(key, {
+          ...row,
+          protectionReason: 'HEALTHY',
+          advice: '点击率健康（曝光充足且 CTR ≥1.5%）：建议改价格/详情，不做重发。',
+        })
+      }
+    }
     for (const row of diagnosed.data_incomplete) {
       const key = row.diagnosticKey || row.itemId
       if (key && !protectedMap.has(key)) protectedMap.set(key, row)
