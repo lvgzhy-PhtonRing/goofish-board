@@ -470,6 +470,7 @@ onUnmounted(() => {
           <li><strong>待激活</strong>（曝光 &lt;100）：先补全标题关键词 + 换首图，再重发</li>
           <li><strong>点击健康</strong>（曝光 ≥1000 且点击率 ≥0.8%，或曝光 100–1000 且点击率 ≥1.5%）：不重发，建议改价格/详情</li>
         </ul>
+        <p><strong>排队顺序：</strong>入池成员按分层规则确定；「排队中」与「优先动作」按重发更新指数（权重）降序展示。</p>
         <p><strong>重发约束（平台规则）：</strong></p>
         <ul class="list-disc space-y-1 pl-5">
           <li>同一商品链接累计编辑 ≤3 次，否则判定“商品不稳定”降权</li>
@@ -538,7 +539,7 @@ onUnmounted(() => {
         <div>
           <h2 class="text-lg font-black text-gray-900">优先动作</h2>
           <p class="text-xs text-gray-500">
-            按分层优先级排序的 Top 3 · 健康商品（不重发）{{ dashboard?.healthy_count ?? 0 }} 件
+            按重发更新指数（权重）排序的 Top 3 · 健康商品（不重发）{{ dashboard?.healthy_count ?? 0 }} 件
           </p>
         </div>
         <span class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">{{ topQueue.length }} / 3</span>

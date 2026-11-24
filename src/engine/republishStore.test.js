@@ -182,7 +182,7 @@ describe('getDashboard', () => {
     expect(logs(backend).filter((entry) => entry.action === 'REENTRY' && entry.itemId === 'reentry-item')).toHaveLength(1)
   })
 
-  it('queues by exposure layer and removes healthy items', async () => {
+  it('keeps layer labels but orders the queue by weight', async () => {
     const items = [
       makeItem('high-exp-low-ctr', NOW, { ageDays: 10, exposure: '1500', views: '5' }),
       makeItem('reborn', NOW, { ageDays: 20, exposure: '500', views: '2' }),
@@ -208,11 +208,18 @@ describe('getDashboard', () => {
 
     const dashboard = await store.getDashboard(NOW)
 
+    // 成员仍按分层/曝光入池；展示顺序按重发更新指数降序
     expect(dashboard.queue.map((row) => row.itemId)).toEqual([
-      'high-exp-low-ctr',
       'reborn',
+      'high-exp-low-ctr',
       'activate-low',
       'activate-high',
+    ])
+    expect(dashboard.queue.map((row) => row.queueKind)).toEqual([
+      'reborn',
+      'high_exposure',
+      'activate',
+      'activate',
     ])
     expect(dashboard.healthy_count).toBe(1)
     expect(dashboard.queue.some((row) => row.itemId === 'healthy')).toBe(false)

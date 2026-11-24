@@ -388,13 +388,13 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     const queue = stored
       .filter((row) => row.status === 'QUEUING')
       .map((row) => apiRow(row, { recovered: recoveredIds.has(row.itemId) }))
-    const LAYER_ORDER = { high_exposure: 0, reborn: 1, activate: 2 }
+    // 排队展示顺序按重发更新指数（权重）降序；成员仍由分层规则决定
     queue.sort((a, b) => {
-      const left = LAYER_ORDER[a.queueKind] ?? 9
-      const right = LAYER_ORDER[b.queueKind] ?? 9
-      if (left !== right) return left - right
-      if (a.queueKind === 'activate') return (a.exposure7d || 0) - (b.exposure7d || 0)
-      return (b.republishScore || 0) - (a.republishScore || 0)
+      const byScore = (b.republishScore || 0) - (a.republishScore || 0)
+      if (byScore !== 0) return byScore
+      const byExposure = (a.exposure7d || 0) - (b.exposure7d || 0)
+      if (byExposure !== 0) return byExposure
+      return String(a.itemId).localeCompare(String(b.itemId))
     })
 
     const protectedMap = new Map()
