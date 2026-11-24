@@ -14,13 +14,13 @@ import {
 
 const NOW = new Date(2026, 10, 23, 12) // 本地 2026-11-23 12:00（周一）
 
-function item(itemId, { ageDays, exposure, views, inquiry = '0', payments = '0' }) {
+function item(itemId, { ageDays, exposure, views, inquiry = '0', payments = '0', title = `item ${itemId}`, price = '100.00' }) {
   const created = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() - ageDays)
   const date = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`
   return {
     itemId,
-    title: `item ${itemId}`,
-    price: '100.00',
+    title,
+    price,
     stock: '1',
     sales: '-',
     createTime: `${date} 12:00:00`,
@@ -173,6 +173,35 @@ describe('diagnoseItems', () => {
     expect(highCtr.protectionReason).toBeNull()
     expect(highCtr.republishScore).toBeGreaterThan(0)
     expect(candidates['high-ctr-no-conversion']).toBeUndefined()
+  })
+
+  it('personalizes advice with exposure, age and title keywords', () => {
+    const result = diagnoseItems(
+      [
+        item('tomica-1', {
+          ageDays: 316,
+          exposure: '17',
+          views: '0',
+          title: '#TOMICA/多美卡 多美卡特注绝版Gulliver日产N',
+          price: '338.00',
+        }),
+        item('minigt-1', {
+          ageDays: 243,
+          exposure: '32',
+          views: '0',
+          title: 'MINIGT 130号LB☆WORK兰博基尼Huracán',
+          price: '1180.00',
+        }),
+      ],
+      NOW,
+    )
+    const rows = Object.fromEntries(result.candidates.map((row) => [row.itemId, row]))
+
+    expect(rows['tomica-1'].advice).toContain('17')
+    expect(rows['tomica-1'].advice).toContain('TOMICA')
+    expect(rows['minigt-1'].advice).toContain('32')
+    expect(rows['minigt-1'].advice).toContain('MINIGT')
+    expect(rows['tomica-1'].advice).not.toBe(rows['minigt-1'].advice)
   })
 
   it('classifies queue layers by exposure and CTR', () => {

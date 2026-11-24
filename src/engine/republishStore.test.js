@@ -137,7 +137,7 @@ describe('getDashboard', () => {
     expect(first.queue).toHaveLength(15)
     expect(first.capacity_waitlist).toHaveLength(2)
     expect(first.top_action_queue.map((row) => row.itemId)).toEqual(first.queue.slice(0, 4).map((row) => row.itemId))
-    expect(first.top_action_queue[0].advice).toContain('建议更换首图')
+    expect(first.top_action_queue[0].advice).toContain('首图')
     expect(first.top_action_queue[0].stock).toBe('1')
     expect(first.top_action_queue[0].sales).toBe('-')
     expect(first.top_action_queue[0].createTime.startsWith('2026-11-13')).toBe(true)

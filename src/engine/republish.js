@@ -77,12 +77,141 @@ export const ADVICE_MID_EXPOSURE_CTR =
   '【建议微调首图+小幅降价】链接处于正常衰退期。新版本建议更换局部细节特写图为首图，' +
   '价格向下微调 3~5 元增加让利吸引力。'
 
-/** 诊断建议（纯本地确定性模板）。 */
-export function diagnosticAdvice(exposure, ctr, priority) {
-  if (exposure > 1000 && ctr < 0.8) return ADVICE_HIGH_EXPOSURE_LOW_CTR
-  if (exposure >= 200 && exposure <= 800 && ctr >= 0.8 && ctr < 1.5) return ADVICE_MID_EXPOSURE_CTR
-  if (priority === 'P1') return '建议更换首图并重构标题前置词，先解决点击率偏低问题。'
-  return '建议优化首图与标题后复测，关注近 7 天点击率变化。'
+const BRAND_HINTS = [
+  'HOT WHEELS',
+  '风火轮',
+  'MINIGT',
+  'TLV',
+  'TOMICA',
+  '多美卡',
+  'RLC',
+  '京商',
+  'KYOSHO',
+  'FIRST',
+  '保时捷',
+  '兰博基尼',
+  '日产',
+  '丰田',
+  '奔驰',
+  '宝马',
+  '法拉利',
+]
+
+function hashText(value) {
+  let hash = 0
+  for (let i = 0; i < value.length; i += 1) hash = (hash * 31 + value.charCodeAt(i)) >>> 0
+  return hash
+}
+
+function numberText(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.round(number) : 0
+}
+
+function percentText(value) {
+  const number = Number(value)
+  return Number.isFinite(number) ? `${Math.round(number * 10) / 10}%` : '0%'
+}
+
+/** 从标题提取品牌/车型词，供建议文案引用；确定性，不调用外部服务。 */
+function keywordFromTitle(title) {
+  let text = String(title || '')
+    .replace(/【[^】]*】/g, ' ')
+    .replace(/[#☆★✦/]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!text) return '品牌词'
+  const upper = text.toUpperCase()
+  let start = -1
+  for (const brand of BRAND_HINTS) {
+    const index = upper.indexOf(brand.toUpperCase())
+    if (index >= 0) {
+      start = index
+      break
+    }
+  }
+  let phrase = (start >= 0 ? text.slice(start) : text).trim()
+  if (phrase.length > 18) phrase = phrase.slice(0, 18).trim()
+  phrase = phrase.replace(/\s+\d{1,4}$/, '').trim()
+  return phrase || '品牌词'
+}
+
+function priceHint(price) {
+  const number = Number(price)
+  if (!Number.isFinite(number) || number <= 0) return ''
+  if (number < 100) return `当前 ¥${Math.round(number)} 属低客单，优先换首图拿点击，不必再降价。`
+  if (number < 500) return `当前 ¥${Math.round(number)} 属中客单，可小幅降价 3~5 元配合新首图。`
+  return `当前 ¥${Math.round(number)} 属高客单，首图要突出编号/成色/细节，降价要谨慎。`
+}
+
+/** 诊断建议：按分层 + 曝光/点击/年龄/标题关键词/价格带生成确定性个性化文案。 */
+export function diagnosticAdvice(input, ctrArg, priorityArg) {
+  const ctx = typeof input === 'object' && input !== null ? input : { exposure: input, ctr: ctrArg, priority: priorityArg }
+  const exposure = Number(ctx.exposure) || 0
+  const views = Number(ctx.views) || 0
+  const ctr = Number(ctx.ctr) || 0
+  const ageDays = ctx.ageDays === null || ctx.ageDays === undefined ? null : Number(ctx.ageDays)
+  const keyword = keywordFromTitle(ctx.title)
+  const queueKind = ctx.queueKind || classifyQueueKind(exposure, ctr)
+  const exp = numberText(exposure)
+  const browse = numberText(views)
+  const c = percentText(ctr)
+  const age = ageDays === null ? '—' : numberText(ageDays)
+  const engage = `近 7 天曝光 ${exp} 次、浏览 ${browse} 次（点击率 ${c}）`
+  const ageText =
+    ageDays === null
+      ? ''
+      : ageDays >= 180
+        ? `上架 ${age} 天，属于老链接`
+        : ageDays >= 30
+          ? `上架 ${age} 天，已过新品期`
+          : `上架 ${age} 天，仍在观察期`
+  const priceText = priceHint(ctx.price)
+
+  let templates
+  if (queueKind === 'high_exposure') {
+    templates = [
+      ADVICE_HIGH_EXPOSURE_LOW_CTR + `你这件${engage}，问题在首图/标题，不在曝光量。`,
+      `【建议彻底重做首图+重构标题前置词】${exp} 次曝光只换来 ${browse} 次点击（${c}%），买家看到了却不点。` +
+        `首图换新角度，标题最前面放「${keyword}」。`,
+      `【建议彻底重做首图+重构标题前置词】${engage}。先别改价，优先重拍首图，` +
+        `并把「${keyword}」放到标题前 12 字，重发后 72 小时复测。${priceText}`,
+    ]
+  } else if (queueKind === 'reborn') {
+    templates = [
+      ADVICE_MID_EXPOSURE_CTR + `你这件${engage}，属于典型衰退。`,
+      `【建议微调首图+小幅降价】${engage}，有曝光但点击不足。首图换成局部细节特写，` +
+        `标题前置「${keyword}」，价格下调 3~5 元后重发。`,
+      `【建议微调首图+小幅降价】${ageText}，${engage}。先改标题前置词为「${keyword}」，` +
+        `再小幅降价，不必重做详情。`,
+    ]
+  } else if (queueKind === 'activate') {
+    templates = [
+      `曝光只有 ${exp} 次（浏览 ${browse} 次），说明还没进入推荐池。先把标题前 12 字改成「${keyword}」，` +
+        `再换一张干净白底首图，重发后观察 3 天。`,
+      `${ageText}仅 ${exp} 次曝光，属于「未被看到」。重发前补全品牌/编号/车型关键词（如「${keyword}」），` +
+        `首图换成正面 45° 实拍。`,
+      `当前曝光 ${exp}、点击率 ${c}%（${browse}/${exp}）。低曝光阶段先别降价，` +
+        `优先用「${keyword}」重写标题并换首图，争取第一波推荐。`,
+      `这件 ${age} 天的链接几乎没曝光（${exp} 次）。建议保留价格，先换首图+把「${keyword}」放到标题最前，` +
+        `再重发测试 72 小时。${priceText}`,
+    ]
+  } else if (queueKind === 'healthy') {
+    return `点击率 ${c}%（${browse}/${exp}）属健康区间，建议改价格/详情或等自然成交，不做重发。`
+  } else if (priorityArg === 'P1' || ctx.priority === 'P1') {
+    templates = [
+      `上架 ${age} 天、点击率 ${c}%，先换首图并改标题前置词为「${keyword}」，重发后 3 天复测。`,
+      `点击率 ${c}% 偏低，建议换全新首图+标题前置「${keyword}」，先观察 72 小时再决定是否降价。`,
+    ]
+  } else {
+    templates = [
+      '建议优化首图与标题后复测，关注近 7 天点击率变化。',
+      `建议换一张新首图，并把「${keyword}」放到标题前 12 字，重发后观察 3 天。`,
+    ]
+  }
+
+  const index = hashText(`${ctx.itemId || ''}|${queueKind}`) % templates.length
+  return templates[index]
 }
 
 /**
@@ -237,7 +366,17 @@ export function diagnoseItems(items, now, roundById = {}) {
       ...classified,
       priority,
       queueKind,
-      advice: diagnosticAdvice(exposure, ctrPct, priority),
+      advice: diagnosticAdvice({
+        itemId,
+        title: item.title,
+        price: item.price,
+        exposure,
+        views,
+        ctr: ctrPct,
+        ageDays,
+        queueKind,
+        priority,
+      }),
     }
     if (queueKind === 'healthy') {
       result.healthy.push(candidateData)
@@ -249,7 +388,17 @@ export function diagnoseItems(items, now, roundById = {}) {
     if (ageDays >= 7 && ageDays < 14 && ctrPct >= 0.8 && ctrPct < 1.5) {
       result.retest_eligible.push({
         ...classified,
-        advice: diagnosticAdvice(exposure, ctrPct, 'P2'),
+        advice: diagnosticAdvice({
+          itemId,
+          title: item.title,
+          price: item.price,
+          exposure,
+          views,
+          ctr: ctrPct,
+          ageDays,
+          queueKind,
+          priority: 'P2',
+        }),
       })
     }
   })
