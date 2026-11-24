@@ -26,6 +26,7 @@ const columns = [
   { key: 'createTime', label: '上架时间', align: 'left' },
   { key: 'exposure', label: '曝光', align: 'center', metric: true },
   { key: 'viewCount', label: '浏览', align: 'center', metric: true },
+  { key: 'ctr', label: '点击率', align: 'center', metric: true },
   { key: 'inquiry', label: '询单', align: 'center', metric: true },
   { key: 'payCount', label: '支付人数', align: 'center', metric: true },
   { key: 'conversion', label: '转化率', align: 'center', metric: true },
@@ -46,6 +47,12 @@ const items = computed(() => {
       return title.includes(text) || itemId.includes(text) || (priceText !== '' && price.includes(priceText))
     })
   }
+  list = list.map((item) => {
+    const exposure = parseNumber(item.exposure)
+    const views = parseNumber(item.viewCount)
+    const ctr = exposure !== null && exposure > 0 && views !== null ? (views / exposure) * 100 : null
+    return { ...item, ctr }
+  })
   const key = sortKey.value
   const dir = sortDir.value === 'asc' ? 1 : -1
   list.sort((a, b) => {
@@ -153,7 +160,7 @@ onMounted(load)
                 v-for="column in columns"
                 :key="column.key"
                 class="cursor-pointer select-none whitespace-nowrap"
-                :class="alignClass(column)"
+                :class="[alignClass(column), column.key === 'itemId' ? 'w-[84px]' : '']"
                 @click="toggleSort(column.key)"
               >
                 {{ column.label }}
@@ -187,7 +194,15 @@ onMounted(load)
                   <span class="font-semibold text-gray-900">¥{{ cellValue(item, column) }}</span>
                 </template>
                 <template v-else-if="column.key === 'itemId'">
-                  <span class="font-mono text-xs text-gray-500">{{ cellValue(item, column) }}</span>
+                  <span class="block w-[80px] truncate font-mono text-xs text-gray-500" :title="item.itemId">{{ item.itemId }}</span>
+                </template>
+                <template v-else-if="column.key === 'createTime'">
+                  <span class="whitespace-nowrap">{{ String(cellValue(item, column)).slice(0, 10) }}</span>
+                </template>
+                <template v-else-if="column.key === 'ctr'">
+                  <span :class="item.metricsMissing || item.ctr === null ? 'text-gray-300' : 'font-mono'">
+                    {{ item.metricsMissing || item.ctr === null ? '—' : item.ctr.toFixed(2) + '%' }}
+                  </span>
                 </template>
                 <template v-else-if="column.metric">
                   <span :class="item.metricsMissing ? 'text-gray-300' : 'font-mono'">{{ cellValue(item, column) }}</span>
