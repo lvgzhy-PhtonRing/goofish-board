@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { fetchPending, resolvePending } from '../../services/automationApi.js'
+import { fetchPending, insertEvent, resolvePending } from '../../services/automationApi.js'
 import { sourceMeta } from '../../services/dataSources.js'
 import ProductThumb from '../../components/ProductThumb.vue'
 
@@ -8,6 +8,8 @@ const props = defineProps({
   config: { type: Object, required: true },
   session: { type: Object, default: null },
   onSession: { type: Function, default: null },
+  store: { type: Object, default: null },
+  onRefresh: { type: Function, default: null },
 })
 
 const items = ref([])
@@ -16,8 +18,13 @@ const error = ref('')
 const expanded = ref(false)
 const resolving = ref('')
 const toast = ref('')
+const selectedOld = ref({})
 
 const count = computed(() => items.value.length)
+const hasNewListing = computed(() =>
+  items.value.some((item) => item.kind === 'new_listing_confirm' || item.kind === 'relist_match'),
+)
+const canAcceptAll = computed(() => !hasNewListing.value)
 
 async function load() {
   loading.value = true
@@ -39,10 +46,82 @@ function pendingSourceMeta(item) {
   return sourceMeta('cdp')
 }
 
+function isNewConfirm(item) {
+  return item.kind === 'new_listing_confirm' || item.kind === 'relist_match'
+}
+
+function optionLabel(item, option) {
+  if (item.kind === 'relist_match') {
+    return option.value === 'yes' ? '重发（关联旧商品）' : '真实上新'
+  }
+  return option.label
+}
+
+function normalizedValue(item, value) {
+  if (item.kind === 'relist_match') return value === 'yes' ? 'repost' : 'new'
+  return value
+}
+
+function selectedOldId(item) {
+  return item.extra?.matched || selectedOld.value[item.id] || ''
+}
+
+async function recordEvent(event) {
+  try {
+    await insertEvent(props.config, props.session, event, props.onSession || undefined)
+  } catch {
+    // 动态记录失败不影响确认结果
+  }
+}
+
+async function confirmCdpItem(item, value) {
+  const decision = normalizedValue(item, value)
+  const oldId = selectedOldId(item)
+  if (decision === 'repost' && !oldId) throw new Error('请选择要关联的旧商品')
+  if (!props.store) throw new Error('看板尚未就绪，请刷新后重试')
+  const extra = item.extra || {}
+  const occurredAt = new Date().toISOString()
+  if (decision === 'repost') {
+    await props.store.confirmCdpRepost(item.item_id, oldId, extra, new Date())
+    await recordEvent({
+      item_id: item.item_id,
+      type: 'repost',
+      occurred_at: occurredAt,
+      data: {
+        title: extra.title || '',
+        price: extra.price || '',
+        source: 'cdp',
+        matched: oldId,
+        oldItemId: oldId,
+        score: extra.score ?? 1,
+        confirmedBy: 'user',
+      },
+    })
+  } else {
+    await props.store.confirmNewListing(item.item_id, extra, new Date())
+    await recordEvent({
+      item_id: item.item_id,
+      type: 'discovered',
+      occurred_at: occurredAt,
+      data: {
+        title: extra.title || '',
+        price: extra.price || '',
+        createTime: extra.createTime || '',
+        source: 'cdp',
+        confirmedBy: 'user',
+      },
+    })
+  }
+  props.onRefresh?.()
+}
+
 async function choose(item, value) {
   resolving.value = item.id
   error.value = ''
   try {
+    if (isNewConfirm(item)) {
+      await confirmCdpItem(item, value)
+    }
     await resolvePending(props.config, props.session, item.id, value, props.onSession || undefined)
     toast.value = '已记录'
     setTimeout(() => { toast.value = '' }, 2000)
@@ -86,7 +165,7 @@ onMounted(load)
     <div v-if="expanded && count" class="apple-card space-y-3">
       <div class="flex items-center justify-between">
         <p class="text-sm font-bold text-gray-800">待确认清单</p>
-        <button class="btn btn-outline btn-sm" :disabled="!!resolving" @click="acceptAll">
+        <button v-if="canAcceptAll" class="btn btn-outline btn-sm" :disabled="!!resolving" @click="acceptAll">
           <i class="fa-solid fa-check-double" />全部按建议处理
         </button>
       </div>
@@ -105,19 +184,36 @@ onMounted(load)
           </div>
         </div>
         <p v-if="item.extra && item.extra.matched" class="mt-1 text-xs text-gray-400">
-          匹配：{{ item.extra.matched }}（置信度 {{ item.extra.score }}）
+          疑似旧品：{{ item.extra.matchedTitle || item.extra.matched }}
+          <span class="font-mono">（{{ item.extra.matched }} · 置信度 {{ item.extra.score }}）</span>
         </p>
+        <select
+          v-if="isNewConfirm(item) && !item.extra?.matched"
+          v-model="selectedOld[item.id]"
+          class="apple-input mt-2 text-xs"
+        >
+          <option value="">选择要关联的旧商品</option>
+          <option v-for="candidate in item.extra?.candidates || []" :key="candidate.itemId" :value="candidate.itemId">
+            {{ candidate.title }} · ¥{{ candidate.price }}
+          </option>
+        </select>
         <div class="mt-2 flex flex-wrap gap-2">
           <button
             v-for="option in item.options"
             :key="option.value"
             class="btn btn-sm"
             :class="item.suggestion === option.value ? 'btn-primary' : 'btn-outline'"
-            :disabled="!!resolving"
+            :disabled="
+              !!resolving ||
+              (isNewConfirm(item) &&
+                normalizedValue(item, option.value) === 'repost' &&
+                !item.extra?.matched &&
+                !selectedOld[item.id])
+            "
             @click="choose(item, option.value)"
           >
             <i v-if="resolving === item.id" class="fa-solid fa-circle-notch animate-spin" />
-            {{ option.label }}
+            {{ optionLabel(item, option) }}
             <span v-if="item.suggestion === option.value" class="text-[10px] opacity-80">建议</span>
           </button>
         </div>

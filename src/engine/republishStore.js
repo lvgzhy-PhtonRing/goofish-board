@@ -567,6 +567,170 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     })
   }
 
+  async function confirmNewListing(itemId, extra = {}, now = new Date()) {
+    const id = String(itemId || '').trim()
+    if (!id) throw new RepublishError('ITEM_ID_MISSING', '缺少商品 ID，无法确认上新。')
+    return mutate(async (state) => {
+      const already = state.logs.some(
+        (entry) => entry.action === 'NEW_LISTING' && String(entry.itemId) === id,
+      )
+      if (!already) {
+        const [newListings, reposts] = quotaCounts(state, now)
+        assertQuotaAvailable(newListings, reposts)
+      }
+      const old = state.pool[id]
+      const lineageId = old?.lineageId || id
+      const repostRound = old?.republishRound || 0
+      const item = {
+        itemId: id,
+        title: extra.title ?? old?.title ?? '',
+        price: extra.price ?? old?.price ?? '',
+        stock: extra.stock ?? old?.stock ?? '',
+        sales: extra.sales ?? old?.sales ?? '',
+        createTime: extra.createTime ?? old?.createTime ?? null,
+        listingAgeDays: 0,
+        exposure7d: 0,
+        views7d: 0,
+        ctr7d: 0,
+        inquiryCount: 0,
+        orderCount: 0,
+        queueKind: null,
+        priority: null,
+        advice: 'CDP 新增确认：真实上新，等待新商品数据',
+        picUrl: extra.picUrl ?? old?.picUrl ?? '',
+      }
+      updateRow(state, item, {
+        status: 'PROTECTED',
+        lineageId,
+        repostRound,
+        now,
+        inPoolAt: old?.inPoolAt ?? null,
+        protectionReason: 'WAITING_NEW_LISTING_DATA',
+      })
+      if (!already) {
+        log(state, {
+          itemId: id,
+          title: item.title,
+          repostRound,
+          action: 'NEW_LISTING',
+          now,
+          remark: 'CDP 新增确认：真实上新',
+        })
+      }
+      return apiRow(state.pool[id])
+    })
+  }
+
+  async function confirmCdpRepost(newItemId, oldItemId, extra = {}, now = new Date()) {
+    const nextId = String(newItemId || '').trim()
+    const prevId = String(oldItemId || '').trim()
+    if (!nextId || !prevId || nextId === prevId) {
+      throw new RepublishError('ITEM_ID_INVALID', '请选择不同的新旧商品 ID。')
+    }
+    return mutate(async (state) => {
+      const already = state.logs.some(
+        (entry) =>
+          entry.action === 'REPOST' &&
+          String(entry.itemId) === prevId &&
+          String(entry.relatedItemId) === nextId,
+      )
+      if (!already) {
+        const [newListings, reposts] = quotaCounts(state, now)
+        assertQuotaAvailable(newListings, reposts)
+      }
+      const old = state.pool[prevId]
+      const lineageId = old?.lineageId || prevId
+      const newRound = (old?.republishRound || 0) + 1
+      if (newRound > 2) {
+        throw new RepublishError('ROUND_LIMIT', '该商品谱系已达到两轮重发上限。')
+      }
+      if (old) {
+        old.status = 'REPOSTED'
+        old.republishRound = newRound
+        old.protectionReason = null
+        old.dataUpdatedAt = formatIso(now)
+      } else {
+        state.pool[prevId] = {
+          itemId: prevId,
+          lineageId,
+          title: extra.matchedTitle || '',
+          price: extra.matchedPrice || '',
+          stock: '',
+          sales: '',
+          createTime: extra.matchedCreateTime || null,
+          listingAgeDays: null,
+          priorityLevel: null,
+          queueKind: null,
+          exposure7d: 0,
+          views7d: 0,
+          ctr7d: 0,
+          inquiryCount: 0,
+          orderCount: 0,
+          inPoolAt: null,
+          status: 'REPOSTED',
+          republishRound: newRound,
+          offlinedAt: null,
+          optimizationStartedAt: null,
+          optimizationBaselineCtr: null,
+          lastDiagnosis: '',
+          protectionReason: null,
+          dataUpdatedAt: formatIso(now),
+          picUrl: '',
+        }
+      }
+      const newStatus = newRound >= 2 ? 'ARCHIVED' : 'PROTECTED'
+      const newReason = newRound >= 2 ? 'ROUND_LIMIT' : 'WAITING_NEW_LISTING_DATA'
+      const item = {
+        itemId: nextId,
+        title: extra.title ?? '',
+        price: extra.price ?? '',
+        stock: '',
+        sales: '',
+        createTime: extra.createTime ?? null,
+        listingAgeDays: 0,
+        exposure7d: 0,
+        views7d: 0,
+        ctr7d: 0,
+        inquiryCount: 0,
+        orderCount: 0,
+        queueKind: null,
+        priority: null,
+        advice: 'CDP 新增确认：重发，等待新商品数据',
+        picUrl: extra.picUrl ?? '',
+      }
+      updateRow(state, item, {
+        status: newStatus,
+        lineageId,
+        repostRound: newRound,
+        now,
+        inPoolAt: null,
+        protectionReason: newReason,
+      })
+      if (!already) {
+        log(state, {
+          itemId: prevId,
+          relatedItemId: nextId,
+          title: item.title || old?.title || '',
+          repostRound: newRound,
+          action: 'REPOST',
+          now,
+          remark: 'CDP 新增确认：重发',
+        })
+        if (newRound >= 2) {
+          log(state, {
+            itemId: nextId,
+            title: item.title,
+            repostRound: newRound,
+            action: 'ARCHIVE',
+            now,
+            remark: 'lineage 已达到两轮重发上限',
+          })
+        }
+      }
+      return apiRow(state.pool[nextId])
+    })
+  }
+
   async function confirmOffline(itemId, { offlineConfirmed, materialsPrepared } = {}, now = new Date()) {
     if (!offlineConfirmed || !materialsPrepared) {
       throw new RepublishError('CHECKLIST_REQUIRED', '请先确认已在闲鱼下架且新版首图/标题已准备。')
@@ -827,6 +991,8 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     getDashboard,
     startOptimization,
     recordNewListing,
+    confirmNewListing,
+    confirmCdpRepost,
     confirmOffline,
     manualOffline,
     removeOffline,

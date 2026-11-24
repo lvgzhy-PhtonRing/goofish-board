@@ -480,7 +480,13 @@ onUnmounted(() => {
       </div>
     </details>
 
-    <PendingPanel :config="config" :session="session" :on-session="onSession" />
+    <PendingPanel
+      :config="config"
+      :session="session"
+      :on-session="onSession"
+      :store="store"
+      :on-refresh="loadDashboard"
+    />
 
     <section class="grid gap-3 md:grid-cols-3">
       <div class="apple-card flex items-center justify-between p-5">
@@ -490,14 +496,9 @@ onUnmounted(() => {
             {{ quota?.new_listings_today ?? 0 }}<span class="ml-1 text-sm font-medium text-gray-400">件</span>
           </p>
         </div>
-        <button
-          class="btn btn-primary btn-sm"
-          :disabled="isLoading || !!actionKey || !!quota?.locked"
-          @click="runAction('new-listing', () => store.recordNewListing(new Date()), '已记录一次真实上新')"
-        >
-          <i class="fa-solid" :class="actionKey === 'new-listing' ? 'fa-circle-notch animate-spin' : 'fa-plus'" />
-          记录上新
-        </button>
+        <span class="max-w-[130px] text-right text-[11px] leading-snug text-gray-400">
+          由 CDP 新增确认自动计数
+        </span>
       </div>
 
       <div class="apple-card p-5">

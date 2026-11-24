@@ -562,6 +562,62 @@ describe('daily quota', () => {
   })
 })
 
+describe('CDP new listing confirmation', () => {
+  it('confirms a real new listing once and counts it in quota', async () => {
+    const { store, backend } = setup(NOW, [])
+    const extra = { title: 'CDP New', price: '68.00', createTime: '2026-11-23 14:40:17', source: 'cdp' }
+
+    const row = await store.confirmNewListing('new-1', extra, NOW)
+    expect(row.status).toBe('PROTECTED')
+    expect(row.protectionReason).toBe('WAITING_NEW_LISTING_DATA')
+    expect(row.lineageId).toBe('new-1')
+
+    const dashboard = await store.getDashboard(NOW)
+    expect(dashboard.quota.new_listings_today).toBe(1)
+    expect(dashboard.protected.find((entry) => entry.itemId === 'new-1')).toBeTruthy()
+
+    await store.confirmNewListing('new-1', extra, NOW)
+    const again = await store.getDashboard(NOW)
+    expect(again.quota.new_listings_today).toBe(1)
+    expect(logs(backend).filter((entry) => entry.action === 'NEW_LISTING' && entry.itemId === 'new-1')).toHaveLength(1)
+  })
+
+  it('confirms a repost with lineage and quota', async () => {
+    const { store, backend } = setup(NOW, [])
+    const extra = {
+      title: 'CDP New 2',
+      price: '99.00',
+      createTime: '2026-11-23 15:00:00',
+      matchedTitle: 'Old 2',
+      matchedPrice: '100.00',
+      score: 0.9,
+      source: 'cdp',
+    }
+
+    const row = await store.confirmCdpRepost('new-2', 'old-2', extra, NOW)
+    expect(row.status).toBe('PROTECTED')
+    expect(row.lineageId).toBe('old-2')
+    expect(row.republishRound).toBe(1)
+    expect(pool(backend)['old-2'].status).toBe('REPOSTED')
+
+    const dashboard = await store.getDashboard(NOW)
+    expect(dashboard.quota.reposts_today).toBe(1)
+
+    await store.confirmCdpRepost('new-2', 'old-2', extra, NOW)
+    expect(logs(backend).filter((entry) => entry.action === 'REPOST' && entry.relatedItemId === 'new-2')).toHaveLength(1)
+  })
+
+  it('applies the daily quota to CDP confirmations', async () => {
+    const { store } = setup(NOW, [])
+    for (let minute = 0; minute < 3; minute += 1) {
+      await store.confirmNewListing(`new-${minute}`, {}, new Date(NOW.getTime() + minute * 60_000))
+    }
+    await expect(
+      store.confirmNewListing('new-3', {}, new Date(NOW.getTime() + 3 * 60_000)),
+    ).rejects.toBeInstanceOf(RepublishError)
+  })
+})
+
 describe('offline / repost', () => {
   it('requires both checklist items and waits 24h before repost with lineage', async () => {
     const { store, backend } = setup(NOW, [makeItem('old-id', NOW)])
