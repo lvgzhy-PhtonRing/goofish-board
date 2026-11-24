@@ -350,15 +350,42 @@ function openRepost(item) {
   repostDialogOpen.value = true
 }
 
+async function recordUserRepost(item, newItemId, occurredAt = new Date().toISOString()) {
+  try {
+    await insertEvent(
+      props.config,
+      props.session,
+      {
+        item_id: newItemId,
+        type: 'repost',
+        occurred_at: occurredAt,
+        data: {
+          title: item.title,
+          price: item.price,
+          source: 'user',
+          matched: item.itemId,
+          oldItemId: item.itemId,
+          score: 1,
+        },
+      },
+      props.onSession || undefined,
+    )
+  } catch {
+    // 动态记录失败不影响重发结果
+  }
+}
+
 async function submitRepost() {
   if (!repostTarget.value || !newItemId.value.trim()) return
   const item = repostTarget.value
+  const nextId = newItemId.value.trim()
   const succeeded = await runAction(
     `repost:${item.itemId}`,
-    () => store.confirmRepost(item.itemId, newItemId.value.trim(), new Date()),
+    () => store.confirmRepost(item.itemId, nextId, new Date()),
     '重发已记录',
   )
   if (succeeded) {
+    await recordUserRepost(item, nextId)
     repostDialogOpen.value = false
     repostTarget.value = null
   }
