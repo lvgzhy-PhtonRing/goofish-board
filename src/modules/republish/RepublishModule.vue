@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { createCloudStore } from '../../services/cloudState.js'
 import { createRepublishStore } from '../../engine/republishStore.js'
+import { insertEvent } from '../../services/automationApi.js'
 import PendingPanel from './PendingPanel.vue'
 import ProductThumb from '../../components/ProductThumb.vue'
 
@@ -89,6 +90,34 @@ async function loadDashboard() {
   } finally {
     isLoading.value = false
   }
+}
+
+async function recordUserOffline(item) {
+  try {
+    await insertEvent(
+      props.config,
+      props.session,
+      {
+        item_id: item.itemId,
+        type: 'offline',
+        occurred_at: new Date().toISOString(),
+        data: { title: item.title, price: item.price, source: 'user' },
+      },
+      props.onSession || undefined,
+    )
+  } catch {
+    // 动态记录失败不影响打卡结果
+  }
+}
+
+async function confirmOfflineAction(item) {
+  const ok = await runAction(
+    `offline:${item.itemId}`,
+    () => store.confirmOffline(item.itemId, { offlineConfirmed: true, materialsPrepared: true }, new Date()),
+    '已记录下架静置',
+  )
+  if (ok) await recordUserOffline(item)
+  return ok
 }
 
 async function runAction(key, action, success) {
@@ -417,7 +446,7 @@ onUnmounted(() => {
               <button
                 class="btn btn-danger btn-sm"
                 :disabled="!dataStatus?.available || !!quota?.locked || !checklistFor(item.itemId).offline || !checklistFor(item.itemId).materials || !!actionKey"
-                @click="runAction(`offline:${item.itemId}`, () => store.confirmOffline(item.itemId, { offlineConfirmed: true, materialsPrepared: true }, new Date()), '已记录下架静置')"
+                @click="confirmOfflineAction(item)"
               >
                 <i class="fa-solid" :class="actionKey === `offline:${item.itemId}` ? 'fa-circle-notch animate-spin' : 'fa-arrow-down'" />
                 确认下架静置

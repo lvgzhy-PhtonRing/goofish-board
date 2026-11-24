@@ -64,6 +64,19 @@ export async function resolvePending(config, session, id, resolution, onSession)
   )
 }
 
+export async function insertEvent(config, session, event, onSession) {
+  return rest(
+    config,
+    session,
+    'goofish_events',
+    {
+      method: 'POST',
+      body: JSON.stringify([{ ...event, owner_id: session?.user?.id || undefined }]),
+    },
+    onSession,
+  )
+}
+
 export async function fetchEvents(config, session, onSession, limit = 1000) {
   return rest(
     config,
