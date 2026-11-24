@@ -117,7 +117,8 @@ function percentText(value) {
 function keywordFromTitle(title) {
   let text = String(title || '')
     .replace(/【[^】]*】/g, ' ')
-    .replace(/[#☆★✦/]/g, ' ')
+    .replace(/[#☆★✦]/g, ' ')
+    .replace(/([^\d])\/([^\d])/g, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
   if (!text) return '品牌词'
@@ -172,7 +173,7 @@ export function diagnosticAdvice(input, ctrArg, priorityArg) {
   if (queueKind === 'high_exposure') {
     templates = [
       ADVICE_HIGH_EXPOSURE_LOW_CTR + `你这件${engage}，问题在首图/标题，不在曝光量。`,
-      `【建议彻底重做首图+重构标题前置词】${exp} 次曝光只换来 ${browse} 次点击（${c}%），买家看到了却不点。` +
+      `【建议彻底重做首图+重构标题前置词】${exp} 次曝光只换来 ${browse} 次点击（${c}），买家看到了却不点。` +
         `首图换新角度，标题最前面放「${keyword}」。`,
       `【建议彻底重做首图+重构标题前置词】${engage}。先别改价，优先重拍首图，` +
         `并把「${keyword}」放到标题前 12 字，重发后 72 小时复测。${priceText}`,
@@ -189,19 +190,19 @@ export function diagnosticAdvice(input, ctrArg, priorityArg) {
     templates = [
       `曝光只有 ${exp} 次（浏览 ${browse} 次），说明还没进入推荐池。先把标题前 12 字改成「${keyword}」，` +
         `再换一张干净白底首图，重发后观察 3 天。`,
-      `${ageText}仅 ${exp} 次曝光，属于「未被看到」。重发前补全品牌/编号/车型关键词（如「${keyword}」），` +
+      `${ageText}，仅 ${exp} 次曝光，属于「未被看到」。重发前补全品牌/编号/车型关键词（如「${keyword}」），` +
         `首图换成正面 45° 实拍。`,
-      `当前曝光 ${exp}、点击率 ${c}%（${browse}/${exp}）。低曝光阶段先别降价，` +
+      `当前曝光 ${exp}、点击率 ${c}（${browse}/${exp}）。低曝光阶段先别降价，` +
         `优先用「${keyword}」重写标题并换首图，争取第一波推荐。`,
       `这件 ${age} 天的链接几乎没曝光（${exp} 次）。建议保留价格，先换首图+把「${keyword}」放到标题最前，` +
         `再重发测试 72 小时。${priceText}`,
     ]
   } else if (queueKind === 'healthy') {
-    return `点击率 ${c}%（${browse}/${exp}）属健康区间，建议改价格/详情或等自然成交，不做重发。`
+    return `点击率 ${c}（${browse}/${exp}）属健康区间，建议改价格/详情或等自然成交，不做重发。`
   } else if (priorityArg === 'P1' || ctx.priority === 'P1') {
     templates = [
-      `上架 ${age} 天、点击率 ${c}%，先换首图并改标题前置词为「${keyword}」，重发后 3 天复测。`,
-      `点击率 ${c}% 偏低，建议换全新首图+标题前置「${keyword}」，先观察 72 小时再决定是否降价。`,
+      `上架 ${age} 天、点击率 ${c}，先换首图并改标题前置词为「${keyword}」，重发后 3 天复测。`,
+      `点击率 ${c} 偏低，建议换全新首图+标题前置「${keyword}」，先观察 72 小时再决定是否降价。`,
     ]
   } else {
     templates = [
@@ -210,7 +211,8 @@ export function diagnosticAdvice(input, ctrArg, priorityArg) {
     ]
   }
 
-  const index = hashText(`${ctx.itemId || ''}|${queueKind}`) % templates.length
+  const index =
+    hashText(`${ctx.itemId || ''}|${queueKind}|${ctx.title || ''}|${exposure}|${ctr}`) % templates.length
   return templates[index]
 }
 
