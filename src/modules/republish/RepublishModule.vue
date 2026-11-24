@@ -585,7 +585,7 @@ onUnmounted(() => {
             <table v-if="dashboard?.queue.length" class="apple-table min-w-[760px]">
               <thead>
                 <tr>
-                  <th>优先</th>
+                  <th>分层 / 优先</th>
                   <th>商品</th>
                   <th>点击率</th>
                   <th>指数</th>
@@ -599,6 +599,13 @@ onUnmounted(() => {
                   <td>
                     <span class="rounded px-2 py-1 text-[10px] font-black" :class="item.priority === 'P1' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'">
                       {{ item.priority || '—' }}
+                    </span>
+                    <span
+                      v-if="queueLayer(item)"
+                      class="mt-1 block rounded px-2 py-1 text-center text-[10px] font-black"
+                      :class="queueLayer(item).tone"
+                    >
+                      {{ queueLayer(item).label }}
                     </span>
                   </td>
                   <td class="max-w-[320px]">
