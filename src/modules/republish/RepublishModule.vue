@@ -66,8 +66,8 @@ const reasonText = {
   ITEM_ID_MISSING: '缺少商品 ID',
   ITEM_NOT_IN_CACHE: '不在最新活力缓存中',
   WAITING_NEW_LISTING_DATA: '等待新商品数据',
-  RETEST_PASSED: '复测 CTR 已回升',
-  CTR_RECOVERED: 'CTR 已回升，可移出',
+  RETEST_PASSED: '复测点击率已回升',
+  CTR_RECOVERED: '点击率已回升，可移出',
 }
 
 function toast(message, tone = 'success') {
@@ -370,7 +370,7 @@ onUnmounted(() => {
                 class="rounded-lg border p-2"
                 :class="item.metricsMissing ? 'border-gray-200 bg-gray-50' : item.ctr7d < 0.8 ? 'border-red-200 bg-red-50' : item.ctr7d < 1.5 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'"
               >
-                <p class="text-[10px] font-bold uppercase text-gray-400">CTR</p>
+                <p class="text-[10px] font-bold uppercase text-gray-400">点击率</p>
                 <p class="mt-1 font-mono text-sm font-black" :class="ctrTone(item)">
                   {{ item.metricsMissing ? '—' : `${item.ctr7d.toFixed(2)}%` }}
                 </p>
@@ -487,7 +487,7 @@ onUnmounted(() => {
             <div v-for="item in dashboard.optimization_candidates" :key="item.itemId" class="flex flex-col gap-3 rounded-lg border border-sky-100 bg-white p-3 sm:flex-row sm:items-center">
               <div class="min-w-0 flex-1">
                 <p class="truncate text-sm font-semibold text-gray-800">{{ item.title }}</p>
-                <p class="mt-1 text-xs text-gray-500">CTR {{ item.ctr7d.toFixed(2) }}% · 曝光 {{ formatNumber(item.exposure7d) }}</p>
+                <p class="mt-1 text-xs text-gray-500">点击率 {{ item.ctr7d.toFixed(2) }}% · 曝光 {{ formatNumber(item.exposure7d) }}</p>
               </div>
               <button
                 class="btn btn-outline btn-sm"
@@ -509,7 +509,7 @@ onUnmounted(() => {
                 <tr>
                   <th>优先</th>
                   <th>商品</th>
-                  <th>CTR</th>
+                  <th>点击率</th>
                   <th>指数</th>
                   <th>轮次</th>
                   <th>入池时间</th>

@@ -199,12 +199,12 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
               repostRound: row.republishRound,
               action: 'RETEST_PASS',
               now,
-              remark: '优化满 72 小时后 CTR 已回升至 1.5% 或以上',
+              remark: '优化满 72 小时后点击率已回升至 1.5% 或以上',
             })
             activeCount -= 1
           } else {
             latest.priority = 'P2'
-            latest.advice = '【P2 | 复测失败】优化满 3 天后 CTR 仍低于 1.5%，可进入重发队列。'
+            latest.advice = '【P2 | 复测失败】优化满 3 天后点击率仍低于 1.5%，可进入重发队列。'
             updateRow(state, latest, {
               status: 'QUEUING',
               lineageId: row.lineageId,
@@ -219,7 +219,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
               repostRound: row.republishRound,
               action: 'RETEST_FAIL',
               now,
-              remark: '优化满 72 小时后 CTR 仍低于 1.5%',
+              remark: '优化满 72 小时后点击率仍低于 1.5%',
               data: { ctr7d: latest.ctr7d, baselineCtr: row.optimizationBaselineCtr },
             })
           }
@@ -386,7 +386,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       if (!item) {
         throw new RepublishError(
           'NOT_ELIGIBLE',
-          '仅 7 至不足 14 天、CTR 为 0.8% 至不足 1.5% 且无否决项的商品可开始复测。',
+          '仅 7 至不足 14 天、点击率为 0.8% 至不足 1.5% 且无否决项的商品可开始复测。',
         )
       }
       const active = Object.values(state.pool).filter((row) => ACTIVE_STATUSES.has(row.status)).length
@@ -611,7 +611,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
         repostRound: row.republishRound,
         action: 'CANCEL',
         now,
-        remark: '星期日复核：近 7 天 CTR 已回升至 1.5% 或以上',
+        remark: '星期日复核：近 7 天点击率已回升至 1.5% 或以上',
       })
       return apiRow(row)
     })
