@@ -17,7 +17,7 @@ import {
 
 const SESSION_KEY = 'goofish_session'
 
-const currentTab = ref('vitality')
+const currentTab = ref('shop')
 const config = ref(null)
 const configError = ref('')
 const session = ref(null)
