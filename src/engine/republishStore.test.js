@@ -278,6 +278,7 @@ describe('getDashboard', () => {
     expect(dashboard.queue.map((row) => row.itemId)).not.toContain('offlined-0')
     expect(dashboard.offlined.map((row) => row.itemId).sort()).toEqual(['offlined-0', 'offlined-1'])
     expect(dashboard.capacity_waitlist).toHaveLength(2)
+    expect(dashboard.pool_statuses['offlined-0']).toBe('OFFLINED')
     expect(pool(backend)['offlined-0'].status).toBe('OFFLINED')
   })
 

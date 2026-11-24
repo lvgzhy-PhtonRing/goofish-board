@@ -200,7 +200,13 @@ async function loadManualItems() {
       merged.set(itemId, { ...(merged.get(itemId) || {}), ...item, source: 'excel' })
     }
     const offlined = new Set((dashboard.value?.offlined || []).map((row) => String(row.itemId)))
-    manualItems.value = [...merged.values()].filter((item) => !offlined.has(String(item.itemId)))
+    const terminal = new Set(['OFFLINED', 'REPOSTED', 'CANCELED', 'ARCHIVED'])
+    const poolStatuses = dashboard.value?.pool_statuses || {}
+    manualItems.value = [...merged.values()].filter((item) => {
+      const itemId = String(item.itemId)
+      const status = poolStatuses[itemId]
+      return !offlined.has(itemId) && !terminal.has(status)
+    })
   } catch (error) {
     manualError.value = error?.message || '读取商品列表失败'
   } finally {

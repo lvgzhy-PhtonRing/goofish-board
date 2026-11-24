@@ -226,6 +226,9 @@ onMounted(load)
         <span v-if="statusAvailable" class="rounded-md bg-emerald-50 px-2 py-0.5 text-emerald-700">
           CDP 在售 {{ vitalityStatus.cdpCount }} 件
         </span>
+        <span v-if="statusAvailable" class="text-gray-400">
+          CDP 抓取 {{ shopStatus?.captured_at || '—' }}
+        </span>
         <span v-else class="rounded-md bg-amber-50 px-2 py-0.5 text-amber-800">
           尚未抓取 CDP 在售清单
         </span>
@@ -289,7 +292,11 @@ onMounted(load)
                   </div>
                 </template>
                 <template v-else-if="column.key === 'status'">
-                  <span class="rounded px-2 py-0.5 text-[10px] font-bold" :class="statusTone(item.cdpStatus)">
+                  <span
+                    class="rounded px-2 py-0.5 text-[10px] font-bold"
+                    :class="statusTone(item.cdpStatus)"
+                    :title="item.cdpStatus?.event ? `事件时间：${item.cdpStatus.event.occurred_at}` : `CDP 快照：${shopStatus?.captured_at || '—'}`"
+                  >
                     {{ item.cdpStatus?.label || '—' }}
                   </span>
                 </template>
