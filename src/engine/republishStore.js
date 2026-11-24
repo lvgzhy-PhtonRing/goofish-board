@@ -79,6 +79,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       priorityLevel: item.priority ?? prev.priorityLevel ?? null,
       // 有意偏差：PRD 要求中性/回升指标保留现有优先级标签，直到用户明确移出。
       // Python _update_row 会把 priority 写为 NULL；这里保留旧标签以匹配 PRD 展示语义。
+      queueKind: item.queueKind ?? prev.queueKind ?? null,
       exposure7d: Math.trunc(Number(item.exposure7d) || 0),
       views7d: Math.trunc(Number(item.views7d) || 0),
       ctr7d: Number(item.ctr7d) || 0,
@@ -117,6 +118,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     const vetoes = byId(diagnosed.protected)
     const incomplete = byId(diagnosed.data_incomplete)
     const observed = byId(diagnosed.observed)
+    const healthy = byId(diagnosed.healthy || [])
 
     // 用最新有效快照更新或保护现有非终态记录
     for (const [itemId, row] of Object.entries(snapshot)) {
@@ -164,6 +166,50 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
           protectionReason: reason,
         })
         if (ACTIVE_STATUSES.has(row.status) && !ACTIVE_STATUSES.has(newStatus)) activeCount -= 1
+        continue
+      }
+
+      // 点击健康：曝光充足且 CTR 正常 → 移出重发队列（复测中与周日复核除外）
+      if (healthy[itemId] && row.status !== 'RETESTING') {
+        const isSunday = now.getDay() === 0
+        if (row.status === 'QUEUING' && isSunday) {
+          // 周日复核：保留队列，由用户手动确认移出
+          updateRow(state, healthy[itemId], {
+            status: 'QUEUING',
+            lineageId: row.lineageId,
+            repostRound: row.republishRound,
+            now,
+            inPoolAt: row.inPoolAt,
+            protectionReason: null,
+          })
+          continue
+        }
+        if (row.status !== 'PROTECTED' || row.protectionReason !== 'HEALTHY') {
+          updateRow(state, healthy[itemId], {
+            status: 'PROTECTED',
+            lineageId: row.lineageId,
+            repostRound: row.republishRound,
+            now,
+            protectionReason: 'HEALTHY',
+          })
+          log(state, {
+            itemId,
+            title: row.title,
+            repostRound: row.republishRound,
+            action: 'PROTECT',
+            now,
+            remark: '点击健康（曝光充足且 CTR 正常），移出重发队列',
+          })
+          if (ACTIVE_STATUSES.has(row.status)) activeCount -= 1
+        } else {
+          updateRow(state, healthy[itemId], {
+            status: 'PROTECTED',
+            lineageId: row.lineageId,
+            repostRound: row.republishRound,
+            now,
+            protectionReason: 'HEALTHY',
+          })
+        }
         continue
       }
 
@@ -227,10 +273,15 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       }
     }
 
-    // 按重发更新指数降序入池
-    const ordered = [...diagnosed.candidates].sort(
-      (a, b) => (b.republishScore || 0) - (a.republishScore || 0),
-    )
+    // 入池顺序与看板一致：高曝光低点击 → 正常衰退 → 待激活（曝光升序），层内按指数降序
+    const LAYER_ORDER = { high_exposure: 0, reborn: 1, activate: 2 }
+    const layerOf = (item) => LAYER_ORDER[item.queueKind] ?? 9
+    const ordered = [...diagnosed.candidates].sort((a, b) => {
+      const byLayer = layerOf(a) - layerOf(b)
+      if (byLayer !== 0) return byLayer
+      if (a.queueKind === 'activate') return (a.exposure7d || 0) - (b.exposure7d || 0)
+      return (b.republishScore || 0) - (a.republishScore || 0)
+    })
     for (const item of ordered) {
       const itemId = item.itemId
       const row = snapshot[itemId]
@@ -286,7 +337,14 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     const queue = stored
       .filter((row) => row.status === 'QUEUING')
       .map((row) => apiRow(row, { recovered: recoveredIds.has(row.itemId) }))
-    queue.sort((a, b) => (b.republishScore || 0) - (a.republishScore || 0))
+    const LAYER_ORDER = { high_exposure: 0, reborn: 1, activate: 2 }
+    queue.sort((a, b) => {
+      const left = LAYER_ORDER[a.queueKind] ?? 9
+      const right = LAYER_ORDER[b.queueKind] ?? 9
+      if (left !== right) return left - right
+      if (a.queueKind === 'activate') return (a.exposure7d || 0) - (b.exposure7d || 0)
+      return (b.republishScore || 0) - (a.republishScore || 0)
+    })
 
     const protectedMap = new Map()
     for (const row of diagnosed.protected) {
@@ -330,6 +388,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
         age_hours: cache.ageHours ?? null,
       },
       quota: quotaView(newListings, reposts),
+      healthy_count: (diagnosed.healthy || []).length,
       top_action_queue: queue.slice(0, 3),
       queue,
       retesting,

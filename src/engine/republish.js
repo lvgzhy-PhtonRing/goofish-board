@@ -131,7 +131,23 @@ export function emptyDiagnosis() {
     protected: [],
     data_incomplete: [],
     observed: [],
+    healthy: [],
   }
+}
+
+export const QUEUE_LAYERS = {
+  high_exposure: { label: '高曝光低点击', order: 0, tone: 'bg-rose-100 text-rose-700' },
+  reborn: { label: '正常衰退', order: 1, tone: 'bg-amber-100 text-amber-800' },
+  activate: { label: '待激活（低曝光）', order: 2, tone: 'bg-slate-100 text-slate-600' },
+  healthy: { label: '点击健康', order: 3, tone: 'bg-emerald-100 text-emerald-700' },
+}
+
+/** 按曝光与点击率分层：只有前 3 层进入重发候选，健康商品不重发。 */
+export function classifyQueueKind(exposure, ctrPct) {
+  if (exposure >= 1000 && ctrPct < 0.8) return 'high_exposure'
+  if (exposure >= 100 && exposure < 1000 && ctrPct < 1.5) return 'reborn'
+  if (exposure < 100) return 'activate'
+  return 'healthy'
 }
 
 /**
@@ -209,16 +225,25 @@ export function diagnoseItems(items, now, roundById = {}) {
     }
     result.observed.push(classified)
 
+    // 曝光分层：健康商品不进重发候选，但仍可进入 3 天复测路径
+    const queueKind = classifyQueueKind(exposure, ctrPct)
+
     // 优先级仅作展示标签，排序一律按重发更新指数
     let priority = null
     if (ageDays >= 7 && ageDays < 14 && ctrPct < 0.8) priority = 'P1'
     else if (ageDays >= 14 && ctrPct < 1.5) priority = 'P2'
 
-    result.candidates.push({
+    const candidateData = {
       ...classified,
       priority,
+      queueKind,
       advice: diagnosticAdvice(exposure, ctrPct, priority),
-    })
+    }
+    if (queueKind === 'healthy') {
+      result.healthy.push(candidateData)
+    } else {
+      result.candidates.push(candidateData)
+    }
 
     // 3 天原位复测：7–13 天、CTR 0.8%–1.5% 的子集
     if (ageDays >= 7 && ageDays < 14 && ctrPct >= 0.8 && ctrPct < 1.5) {
@@ -252,6 +277,7 @@ export function apiRow(row, { recovered = false } = {}) {
     createTime: row.createTime,
     listingAgeDays: row.listingAgeDays,
     priority: row.priorityLevel,
+    queueKind: row.queueKind || null,
     republishScore: Math.round(score * 100) / 100,
     exposure7d: row.exposure7d,
     views7d: row.views7d,

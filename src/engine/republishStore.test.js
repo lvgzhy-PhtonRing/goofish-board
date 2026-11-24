@@ -182,6 +182,44 @@ describe('getDashboard', () => {
     expect(logs(backend).filter((entry) => entry.action === 'REENTRY' && entry.itemId === 'reentry-item')).toHaveLength(1)
   })
 
+  it('queues by exposure layer and removes healthy items', async () => {
+    const items = [
+      makeItem('high-exp-low-ctr', NOW, { ageDays: 10, exposure: '1500', views: '5' }),
+      makeItem('reborn', NOW, { ageDays: 20, exposure: '500', views: '2' }),
+      makeItem('activate-high', NOW, { ageDays: 30, exposure: '80', views: '4' }),
+      makeItem('activate-low', NOW, { ageDays: 30, exposure: '20', views: '1' }),
+      makeItem('healthy', NOW, { ageDays: 20, exposure: '500', views: '50' }),
+    ]
+    const initial = {
+      pool: {
+        healthy: {
+          itemId: 'healthy',
+          lineageId: 'healthy',
+          title: 'healthy item',
+          status: 'QUEUING',
+          republishRound: 0,
+          queueKind: 'reborn',
+        },
+      },
+      logs: [],
+      nextLogId: 1,
+    }
+    const { store, backend } = setup(NOW, items, { initial })
+
+    const dashboard = await store.getDashboard(NOW)
+
+    expect(dashboard.queue.map((row) => row.itemId)).toEqual([
+      'high-exp-low-ctr',
+      'reborn',
+      'activate-low',
+      'activate-high',
+    ])
+    expect(dashboard.healthy_count).toBe(1)
+    expect(dashboard.queue.some((row) => row.itemId === 'healthy')).toBe(false)
+    expect(pool(backend).healthy).toMatchObject({ status: 'PROTECTED', protectionReason: 'HEALTHY' })
+    expect(dashboard.protected.find((row) => row.itemId === 'healthy')?.protectionReason).toBe('HEALTHY')
+  })
+
   it('does not insert candidates from stale or incomplete caches', async () => {
     const items = [makeItem('stale-item', NOW, { ageDays: 15, exposure: '500', views: '0' })]
     const stale = setup(NOW, items, { cacheOptions: { hoursAgo: 37 } })

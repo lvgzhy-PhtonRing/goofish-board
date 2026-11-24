@@ -70,6 +70,17 @@ const reasonText = {
   WAITING_NEW_LISTING_DATA: '等待新商品数据',
   RETEST_PASSED: '复测点击率已回升',
   CTR_RECOVERED: '点击率已回升，可移出',
+  HEALTHY: '点击健康（建议改价格/详情，不重发）',
+}
+
+const queueLayers = {
+  high_exposure: { label: '高曝光低点击', tone: 'bg-rose-100 text-rose-700' },
+  reborn: { label: '正常衰退', tone: 'bg-amber-100 text-amber-800' },
+  activate: { label: '待激活（低曝光）', tone: 'bg-slate-100 text-slate-600' },
+}
+
+function queueLayer(item) {
+  return queueLayers[item.queueKind] || null
 }
 
 function toast(message, tone = 'success') {
@@ -139,7 +150,7 @@ async function runAction(key, action, success) {
 }
 
 function checklistFor(itemId) {
-  return checklist.value[itemId] || { offline: false, materials: false }
+  return checklist.value[itemId] || { offline: false, materials: false, keywords: false }
 }
 
 function setChecklist(itemId, key, value) {
@@ -286,6 +297,25 @@ onUnmounted(() => {
       {{ pageError }}
     </section>
 
+    <details class="apple-card cursor-pointer">
+      <summary class="text-sm font-bold text-gray-800">重发规则说明（点击展开）</summary>
+      <div class="mt-3 space-y-2 text-xs leading-relaxed text-gray-600">
+        <p><strong>分层规则（按近 7 天曝光与点击率）：</strong></p>
+        <ul class="list-disc space-y-1 pl-5">
+          <li><strong>高曝光低点击</strong>（曝光 ≥1000 且点击率 &lt;0.8%）：彻底重做首图+标题后重发</li>
+          <li><strong>正常衰退</strong>（曝光 100–1000 且点击率 &lt;1.5%）：换首图/标题 + 小幅降价后重发</li>
+          <li><strong>待激活</strong>（曝光 &lt;100）：先补全标题关键词 + 换首图，再重发</li>
+          <li><strong>点击健康</strong>（点击率 ≥1.5%）：不重发，建议改价格/详情</li>
+        </ul>
+        <p><strong>重发约束（平台规则）：</strong></p>
+        <ul class="list-disc space-y-1 pl-5">
+          <li>同一商品链接累计编辑 ≤3 次，否则判定“商品不稳定”降权</li>
+          <li>删除后新建链接须换首图 + 改标题前置词 + 微调价格，否则触发“重复铺货”降权</li>
+          <li>两轮重发止损；每日配额：上新+重发 ≥3 或重发 ≥2 锁定</li>
+        </ul>
+      </div>
+    </details>
+
     <PendingPanel :config="config" :session="session" :on-session="onSession" />
 
     <section class="grid gap-3 md:grid-cols-3">
@@ -344,7 +374,9 @@ onUnmounted(() => {
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-lg font-black text-gray-900">优先动作</h2>
-          <p class="text-xs text-gray-500">按重发更新指数排序的 Top 3</p>
+          <p class="text-xs text-gray-500">
+            按分层优先级排序的 Top 3 · 健康商品（不重发）{{ dashboard?.healthy_count ?? 0 }} 件
+          </p>
         </div>
         <span class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">{{ topQueue.length }} / 3</span>
       </div>
@@ -362,6 +394,9 @@ onUnmounted(() => {
                 :class="item.priority === 'P1' ? 'bg-red-100 text-red-700' : item.priority === 'P2' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'"
               >
                 {{ item.priority === 'P1' ? 'P1' : item.priority === 'P2' ? 'P2' : '待优化' }}
+              </span>
+              <span v-if="queueLayer(item)" class="rounded-md px-2 py-1 text-[11px] font-black" :class="queueLayer(item).tone">
+                {{ queueLayer(item).label }}
               </span>
               <span class="rounded-md bg-gray-900 px-2 py-1 text-[11px] font-black text-white">
                 指数 {{ item.republishScore?.toFixed(0) ?? '—' }}
@@ -441,12 +476,24 @@ onUnmounted(() => {
                 />
                 <span>已准备新版首图与标题</span>
               </label>
+              <label
+                v-if="item.queueKind === 'activate'"
+                class="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-xs text-slate-700 sm:col-span-2"
+              >
+                <input
+                  type="checkbox"
+                  class="mt-0.5"
+                  :checked="checklistFor(item.itemId).keywords"
+                  @change="setChecklist(item.itemId, 'keywords', $event.target.checked)"
+                />
+                <span>标题已补全关键词（低曝光商品必做：品牌/编号/车型，参考同类热卖标题）</span>
+              </label>
             </div>
 
             <div class="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
               <button
                 class="btn btn-danger btn-sm"
-                :disabled="!dataStatus?.available || !!quota?.locked || !checklistFor(item.itemId).offline || !checklistFor(item.itemId).materials || !!actionKey"
+                :disabled="!dataStatus?.available || !!quota?.locked || !checklistFor(item.itemId).offline || !checklistFor(item.itemId).materials || (item.queueKind === 'activate' && !checklistFor(item.itemId).keywords) || !!actionKey"
                 @click="confirmOfflineAction(item)"
               >
                 <i class="fa-solid" :class="actionKey === `offline:${item.itemId}` ? 'fa-circle-notch animate-spin' : 'fa-arrow-down'" />

@@ -4,6 +4,7 @@ import {
   ADVICE_HIGH_EXPOSURE_LOW_CTR,
   ADVICE_MID_EXPOSURE_CTR,
   apiRow,
+  classifyQueueKind,
   diagnoseItems,
   formatIso,
   listingAgeDays,
@@ -118,7 +119,9 @@ describe('diagnoseItems', () => {
     const priorities = Object.fromEntries(result.candidates.map((row) => [row.itemId, row.priority]))
     expect(priorities['p1-day-7']).toBe('P1')
     expect(priorities['p1-day-13']).toBe('P1')
-    expect(priorities['p1-threshold']).toBeNull()
+    // 1000 曝光 + 0.8% CTR 属于「点击健康」，不再进入重发候选
+    expect(priorities['p1-threshold']).toBeUndefined()
+    expect(result.healthy.map((row) => row.itemId)).toContain('p1-threshold')
     expect(priorities['p2-day-14']).toBe('P2')
     // 新规则取消曝光<80拦截，低曝光商品也进入候选
     expect(priorities['protected-sample']).toBe('P1')
@@ -164,9 +167,20 @@ describe('diagnoseItems', () => {
     const candidates = Object.fromEntries(result.candidates.map((row) => [row.itemId, row]))
     expect(candidates['high-exposure-low-ctr'].advice).toContain('彻底重做首图+重构标题前置词')
     expect(candidates['mid-exposure-mid-ctr'].advice).toContain('微调首图+小幅降价')
-    const highCtr = candidates['high-ctr-no-conversion']
+    // 高曝光高 CTR 属于「点击健康」，移出重发候选但保留诊断数据
+    const healthy = Object.fromEntries(result.healthy.map((row) => [row.itemId, row]))
+    const highCtr = healthy['high-ctr-no-conversion']
     expect(highCtr.protectionReason).toBeNull()
     expect(highCtr.republishScore).toBeGreaterThan(0)
+    expect(candidates['high-ctr-no-conversion']).toBeUndefined()
+  })
+
+  it('classifies queue layers by exposure and CTR', () => {
+    expect(classifyQueueKind(1500, 0.5)).toBe('high_exposure')
+    expect(classifyQueueKind(500, 1.0)).toBe('reborn')
+    expect(classifyQueueKind(50, 8.0)).toBe('activate')
+    expect(classifyQueueKind(500, 2.0)).toBe('healthy')
+    expect(classifyQueueKind(1500, 1.0)).toBe('healthy')
   })
 
   it('exposes advice constants verbatim', () => {
