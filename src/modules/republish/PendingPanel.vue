@@ -87,7 +87,7 @@ onMounted(load)
 
       <div v-for="item in items" :key="item.id" class="rounded-lg border border-gray-200 bg-gray-50/60 p-3">
         <div class="flex items-start gap-2">
-          <ProductThumb :item-id="item.item_id || ''" :base="config.supabaseUrl" :size="24" />
+          <ProductThumb :item-id="item.item_id || ''" :pic-url="item.extra?.picUrl || ''" :base="config.supabaseUrl" :size="28" />
           <div class="min-w-0 flex-1">
             <p class="text-sm font-semibold text-gray-800">{{ item.question }}</p>
           </div>

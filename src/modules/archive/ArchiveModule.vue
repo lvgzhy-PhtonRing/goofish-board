@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { fetchEvents } from '../../services/automationApi.js'
+import { loadRow } from '../../services/supabaseClient.js'
 import ProductThumb from '../../components/ProductThumb.vue'
 
 const props = defineProps({
@@ -10,6 +11,7 @@ const props = defineProps({
 })
 
 const events = ref([])
+const picById = ref({})
 const loading = ref(true)
 const error = ref('')
 const keyword = ref('')
@@ -130,7 +132,21 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    events.value = (await fetchEvents(props.config, props.session, props.onSession || undefined)) || []
+    const [eventRows, vitality] = await Promise.all([
+      fetchEvents(props.config, props.session, props.onSession || undefined),
+      loadRow(props.config, 'goofish_vitality', props.session, { onSession: props.onSession || undefined }),
+    ])
+    events.value = eventRows || []
+    const map = {}
+    for (const entry of vitality?.payload?.vitality || []) {
+      if (entry?.itemId && entry?.picUrl) map[String(entry.itemId)] = String(entry.picUrl)
+    }
+    // 事件自带图片优先
+    for (const event of events.value) {
+      const itemId = String(event.item_id || '')
+      if (event.data?.picUrl && itemId) map[itemId] = String(event.data.picUrl)
+    }
+    picById.value = map
   } catch (err) {
     error.value = err?.message || '读取商品档案失败'
   } finally {
@@ -187,7 +203,7 @@ onMounted(load)
             <tr class="cursor-pointer" @click="toggle(group.key)">
               <td>
                 <div class="flex items-center gap-2">
-                  <ProductThumb :item-id="group.itemIds[0] || ''" :base="config.supabaseUrl" :size="28" />
+                  <ProductThumb :item-id="group.itemIds[0] || ''" :pic-url="picById[group.itemIds[0]] || ''" :base="config.supabaseUrl" :size="28" />
                   <div class="min-w-0">
                     <p class="max-w-[360px] truncate font-semibold text-gray-800">{{ group.title }}</p>
                     <p class="mt-0.5 font-mono text-[10px] text-gray-400">{{ group.itemIds.join(' · ') }}</p>
