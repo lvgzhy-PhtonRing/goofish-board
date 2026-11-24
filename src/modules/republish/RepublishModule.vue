@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { createCloudStore } from '../../services/cloudState.js'
 import { createRepublishStore } from '../../engine/republishStore.js'
 import PendingPanel from './PendingPanel.vue'
+import ProductThumb from '../../components/ProductThumb.vue'
 
 const props = defineProps({
   config: { type: Object, required: true },
@@ -197,8 +198,7 @@ async function submitRepost() {
   }
 }
 
-function handleImageError(event) {
-  event.target.style.display = 'none'
+function handleImageError(event) {  event.target.style.display = 'none'
 }
 
 onMounted(() => {
@@ -341,20 +341,7 @@ onUnmounted(() => {
             </div>
 
             <div class="flex gap-4">
-              <div class="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-                <img
-                  v-if="item.picUrl"
-                  :src="item.picUrl"
-                  :alt="item.title"
-                  class="h-full w-full object-cover"
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                  @error="handleImageError"
-                />
-                <div v-else class="grid h-full w-full place-items-center text-gray-400">
-                  <i class="fa-regular fa-image text-2xl" />
-                </div>
-              </div>
+              <ProductThumb :item-id="item.itemId" :pic-url="item.picUrl" :base="config.supabaseUrl" :size="80" />
               <div class="min-w-0 flex-1">
                 <h3 class="line-clamp-2 font-bold leading-snug text-gray-900">{{ item.title }}</h3>
                 <p class="mt-1 break-all font-mono text-[10px] text-gray-400">ID {{ item.itemId }}</p>
@@ -537,8 +524,13 @@ onUnmounted(() => {
                     </span>
                   </td>
                   <td class="max-w-[320px]">
-                    <p class="truncate font-semibold text-gray-800">{{ item.title }}</p>
-                    <p class="mt-0.5 font-mono text-[10px] text-gray-400">{{ item.itemId }} · ¥{{ formatPrice(item.price) }}</p>
+                    <div class="flex items-center gap-2">
+                      <ProductThumb :item-id="item.itemId" :pic-url="item.picUrl" :base="config.supabaseUrl" :size="24" />
+                      <div class="min-w-0">
+                        <p class="truncate font-semibold text-gray-800">{{ item.title }}</p>
+                        <p class="mt-0.5 font-mono text-[10px] text-gray-400">{{ item.itemId }} · ¥{{ formatPrice(item.price) }}</p>
+                      </div>
+                    </div>
                   </td>
                   <td class="font-mono font-bold" :class="ctrTone(item)">{{ item.metricsMissing ? '—' : `${item.ctr7d.toFixed(2)}%` }}</td>
                   <td class="font-mono font-bold text-gray-900">{{ item.republishScore?.toFixed(0) ?? '—' }}</td>
@@ -580,12 +572,15 @@ onUnmounted(() => {
             :key="item.itemId"
             class="flex flex-col gap-4 rounded-xl border border-gray-200 p-4 lg:flex-row lg:items-center"
           >
-            <div class="min-w-0 flex-1">
-              <p class="truncate font-bold text-gray-900">{{ item.title }}</p>
-              <p class="mt-1 font-mono text-[10px] text-gray-400">{{ item.itemId }} · 第 {{ item.republishRound + 1 }} 轮</p>
-              <p v-if="item.protectionReason" class="mt-1 text-xs font-semibold text-amber-700">
-                {{ reasonText[item.protectionReason] || item.protectionReason }}
-              </p>
+            <div class="flex min-w-0 flex-1 items-center gap-3">
+              <ProductThumb :item-id="item.itemId" :pic-url="item.picUrl" :base="config.supabaseUrl" :size="28" />
+              <div class="min-w-0">
+                <p class="truncate font-bold text-gray-900">{{ item.title }}</p>
+                <p class="mt-1 font-mono text-[10px] text-gray-400">{{ item.itemId }} · 第 {{ item.republishRound + 1 }} 轮</p>
+                <p v-if="item.protectionReason" class="mt-1 text-xs font-semibold text-amber-700">
+                  {{ reasonText[item.protectionReason] || item.protectionReason }}
+                </p>
+              </div>
             </div>
             <div class="rounded-lg bg-amber-50 px-4 py-2 text-center">
               <p class="text-[10px] font-bold uppercase tracking-wider text-amber-700">静置倒计时</p>
@@ -609,9 +604,12 @@ onUnmounted(() => {
             :key="item.diagnosticKey || item.itemId"
             class="flex flex-col gap-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3 sm:flex-row sm:items-center"
           >
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-semibold text-gray-800">{{ item.title || item.itemId }}</p>
-              <p class="mt-1 font-mono text-[10px] text-gray-400">{{ item.itemId || '商品 ID 不可用' }}</p>
+            <div class="flex min-w-0 flex-1 items-center gap-3">
+              <ProductThumb :item-id="item.itemId" :pic-url="item.picUrl" :base="config.supabaseUrl" :size="24" />
+              <div class="min-w-0">
+                <p class="truncate text-sm font-semibold text-gray-800">{{ item.title || item.itemId }}</p>
+                <p class="mt-1 font-mono text-[10px] text-gray-400">{{ item.itemId || '商品 ID 不可用' }}</p>
+              </div>
             </div>
             <span class="rounded bg-gray-200 px-2 py-1 text-[10px] font-bold text-gray-700">
               {{ reasonText[item.protectionReason] || item.protectionReason || '数据不足' }}

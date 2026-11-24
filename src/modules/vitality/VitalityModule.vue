@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { loadRow } from '../../services/supabaseClient.js'
 import { parseNumber } from '../../engine/republish.js'
+import ProductThumb from '../../components/ProductThumb.vue'
 
 const props = defineProps({
   config: { type: Object, required: true },
@@ -153,7 +154,10 @@ onMounted(load)
             <tr v-for="item in items" v-else :key="item.itemId">
               <td v-for="column in columns" :key="column.key" :class="alignClass(column)" :title="column.key === 'title' ? item.title : undefined">
                 <template v-if="column.key === 'title'">
-                  <span class="block max-w-[260px] truncate">{{ cellValue(item, column) }}</span>
+                  <div class="flex items-center gap-2">
+                    <ProductThumb :item-id="item.itemId" :pic-url="item.picUrl" :base="config.supabaseUrl" :size="28" />
+                    <span class="block max-w-[240px] truncate">{{ cellValue(item, column) }}</span>
+                  </div>
                 </template>
                 <template v-else-if="column.key === 'price'">
                   <span class="font-semibold text-gray-900">¥{{ cellValue(item, column) }}</span>

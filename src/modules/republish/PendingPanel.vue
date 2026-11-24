@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { fetchPending, resolvePending } from '../../services/automationApi.js'
+import ProductThumb from '../../components/ProductThumb.vue'
 
 const props = defineProps({
   config: { type: Object, required: true },
@@ -85,7 +86,12 @@ onMounted(load)
       <p v-if="toast" class="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-success">{{ toast }}</p>
 
       <div v-for="item in items" :key="item.id" class="rounded-lg border border-gray-200 bg-gray-50/60 p-3">
-        <p class="text-sm font-semibold text-gray-800">{{ item.question }}</p>
+        <div class="flex items-start gap-2">
+          <ProductThumb :item-id="item.item_id || ''" :base="config.supabaseUrl" :size="24" />
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-semibold text-gray-800">{{ item.question }}</p>
+          </div>
+        </div>
         <p v-if="item.extra && item.extra.matched" class="mt-1 text-xs text-gray-400">
           匹配：{{ item.extra.matched }}（置信度 {{ item.extra.score }}）
         </p>

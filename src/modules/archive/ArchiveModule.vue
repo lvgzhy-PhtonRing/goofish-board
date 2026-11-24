@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { fetchEvents } from '../../services/automationApi.js'
+import ProductThumb from '../../components/ProductThumb.vue'
 
 const props = defineProps({
   config: { type: Object, required: true },
@@ -185,8 +186,13 @@ onMounted(load)
           <template v-for="group in filtered" :key="group.key">
             <tr class="cursor-pointer" @click="toggle(group.key)">
               <td>
-                <p class="max-w-[380px] truncate font-semibold text-gray-800">{{ group.title }}</p>
-                <p class="mt-0.5 font-mono text-[10px] text-gray-400">{{ group.itemIds.join(' · ') }}</p>
+                <div class="flex items-center gap-2">
+                  <ProductThumb :item-id="group.itemIds[0] || ''" :base="config.supabaseUrl" :size="28" />
+                  <div class="min-w-0">
+                    <p class="max-w-[360px] truncate font-semibold text-gray-800">{{ group.title }}</p>
+                    <p class="mt-0.5 font-mono text-[10px] text-gray-400">{{ group.itemIds.join(' · ') }}</p>
+                  </div>
+                </div>
               </td>
               <td class="text-center font-mono font-bold text-success">{{ countOf(group, 'discovered') }}</td>
               <td class="text-center font-mono font-bold text-danger">{{ countOf(group, 'offline') }}</td>
