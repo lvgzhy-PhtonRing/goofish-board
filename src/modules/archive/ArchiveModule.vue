@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { fetchEvents } from '../../services/automationApi.js'
 import { loadRow } from '../../services/supabaseClient.js'
+import { eventSourceMeta } from '../../services/dataSources.js'
 import ProductThumb from '../../components/ProductThumb.vue'
 
 const props = defineProps({
@@ -240,9 +241,12 @@ onMounted(load)
 
           <div class="space-y-5">
             <div v-for="block in day.blocks" :key="block.type">
-              <p class="flex items-center gap-2 text-sm font-semibold text-gray-500">
+              <p class="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-500">
                 <i :class="[typeIcons[block.type] || 'fa-solid fa-circle', typeColors[block.type] || 'text-gray-400']" />
                 {{ blockTitle(block) }}
+                <span class="rounded px-1.5 py-0.5 text-[10px] font-bold" :class="eventSourceMeta(block.items[0]).badge">
+                  {{ eventSourceMeta(block.items[0]).label }}
+                </span>
                 <span class="text-xs font-normal text-gray-300">{{ formatTime(block.items[0]?.occurred_at) }}</span>
               </p>
 

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { fetchPending, resolvePending } from '../../services/automationApi.js'
+import { sourceMeta } from '../../services/dataSources.js'
 import ProductThumb from '../../components/ProductThumb.vue'
 
 const props = defineProps({
@@ -28,6 +29,14 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+function pendingSourceMeta(item) {
+  const source = String(item.extra?.source || '')
+  if (source) return sourceMeta(source)
+  if (item.kind === 'sold_status') return sourceMeta('ysp')
+  if (item.kind === 'refund_status') return sourceMeta('excel')
+  return sourceMeta('cdp')
 }
 
 async function choose(item, value) {
@@ -90,6 +99,9 @@ onMounted(load)
           <ProductThumb :item-id="item.item_id || ''" :pic-url="item.extra?.picUrl || ''" :base="config.supabaseUrl" :size="28" />
           <div class="min-w-0 flex-1">
             <p class="text-sm font-semibold text-gray-800">{{ item.question }}</p>
+            <span class="mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold" :class="pendingSourceMeta(item).badge">
+              {{ pendingSourceMeta(item).label }} · 可信度 {{ pendingSourceMeta(item).confidence }}
+            </span>
           </div>
         </div>
         <p v-if="item.extra && item.extra.matched" class="mt-1 text-xs text-gray-400">

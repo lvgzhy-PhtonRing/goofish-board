@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { createCloudStore } from '../../services/cloudState.js'
 import { createRepublishStore } from '../../engine/republishStore.js'
 import { insertEvent } from '../../services/automationApi.js'
+import { sourceMeta } from '../../services/dataSources.js'
 import PendingPanel from './PendingPanel.vue'
 import ProductThumb from '../../components/ProductThumb.vue'
 
@@ -650,8 +651,11 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <footer class="flex flex-col gap-1 border-t border-gray-200 pt-3 text-[11px] text-gray-400 sm:flex-row sm:justify-between">
-      <span>数据来源：{{ dataStatus?.range === '7' ? '近 7 天' : '—' }} · {{ dataStatus?.complete ? '完整' : '不完整' }}</span>
+    <footer class="flex flex-col gap-2 border-t border-gray-200 pt-3 text-[11px] text-gray-400 sm:flex-row sm:justify-between">
+      <span class="flex flex-wrap items-center gap-2">
+        <span>诊断数据：{{ sourceMeta('excel').label }}（{{ dataStatus?.range === '7' ? '近 7 天' : '—' }} · {{ dataStatus?.complete ? '完整' : '不完整' }} · 可信度 {{ sourceMeta('excel').confidence }}）</span>
+        <span class="rounded px-1.5 py-0.5 font-bold" :class="sourceMeta('user').badge">打卡：{{ sourceMeta('user').label }}（{{ sourceMeta('user').confidence }}）</span>
+      </span>
       <span>数据时间：{{ formatDate(dataStatus?.fetched_at) }}</span>
     </footer>
 

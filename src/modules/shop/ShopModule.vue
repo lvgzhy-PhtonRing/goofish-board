@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { fetchShopMetrics } from '../../services/automationApi.js'
+import { sourceMeta } from '../../services/dataSources.js'
 
 const props = defineProps({
   config: { type: Object, required: true },
@@ -152,6 +153,9 @@ onMounted(load)
       <div v-else class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-xs text-gray-500">
         <span><i class="fa-regular fa-clock mr-1" />抓取时间：{{ latest.captured_at }}</span>
         <span class="text-success"><i class="fa-solid fa-circle-check mr-1" />抓取完整</span>
+        <span class="rounded-md px-2 py-0.5" :class="sourceMeta('cdp').badge">
+          来源：{{ sourceMeta('cdp').label }} · 可信度：{{ sourceMeta('cdp').confidence }}
+        </span>
         <span class="ml-auto">共 {{ records.length }} 次记录</span>
       </div>
 

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { loadRow } from '../../services/supabaseClient.js'
 import { parseNumber } from '../../engine/republish.js'
+import { sourceMeta } from '../../services/dataSources.js'
 import ProductThumb from '../../components/ProductThumb.vue'
 
 const props = defineProps({
@@ -167,6 +168,9 @@ onMounted(load)
         <span>口径：{{ range }}</span>
         <span :class="complete ? 'text-success' : 'text-warning'">
           {{ complete ? '完整' : '不完整（部分页未抓满）' }}
+        </span>
+        <span class="rounded-md px-2 py-0.5" :class="sourceMeta('excel').badge">
+          来源：{{ sourceMeta('excel').label }} · 可信度：{{ sourceMeta('excel').confidence }}
         </span>
         <span class="ml-auto font-semibold text-gray-700">
           共 {{ totalCount }} 件<span v-if="isSearching" class="ml-1 text-primary">（匹配 {{ count }} 件）</span>
