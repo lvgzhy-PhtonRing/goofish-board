@@ -10,6 +10,7 @@ const items = [
   { id: 'vitality', name: '商品活力', icon: 'fa-solid fa-chart-simple' },
   { id: 'republish', name: '重发看板', icon: 'fa-solid fa-rotate' },
   { id: 'archive', name: '商品档案', icon: 'fa-solid fa-clock-rotate-left' },
+  { id: 'shop', name: '全店数据', icon: 'fa-solid fa-chart-line' },
 ]
 
 function tone(tab, currentTab) {

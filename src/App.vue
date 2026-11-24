@@ -5,6 +5,7 @@ import LoginPanel from './components/LoginPanel.vue'
 import VitalityModule from './modules/vitality/VitalityModule.vue'
 import RepublishModule from './modules/republish/RepublishModule.vue'
 import ArchiveModule from './modules/archive/ArchiveModule.vue'
+import ShopModule from './modules/shop/ShopModule.vue'
 import {
   hasValidSession,
   isCloudConfigReady,
@@ -123,6 +124,12 @@ onMounted(boot)
         />
         <ArchiveModule
           v-else-if="currentTab === 'archive'"
+          :config="config"
+          :session="session"
+          :on-session="onSession"
+        />
+        <ShopModule
+          v-else-if="currentTab === 'shop'"
           :config="config"
           :session="session"
           :on-session="onSession"

@@ -73,3 +73,13 @@ export async function fetchEvents(config, session, onSession, limit = 1000) {
     onSession,
   )
 }
+
+export async function fetchShopMetrics(config, session, onSession, limit = 30) {
+  return rest(
+    config,
+    session,
+    `goofish_shop_metrics?order=created_at.desc&limit=${limit}&select=*`,
+    {},
+    onSession,
+  )
+}
