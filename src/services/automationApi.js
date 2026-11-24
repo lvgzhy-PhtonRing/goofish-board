@@ -96,3 +96,14 @@ export async function fetchShopMetrics(config, session, onSession, limit = 30) {
     onSession,
   )
 }
+
+export async function fetchShopStatus(config, session, onSession) {
+  const rows = await rest(
+    config,
+    session,
+    'goofish_shop_status?complete=eq.true&order=created_at.desc&limit=1&select=payload,captured_at,count',
+    {},
+    onSession,
+  )
+  return rows?.[0] || null
+}

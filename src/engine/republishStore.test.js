@@ -244,6 +244,86 @@ describe('getDashboard', () => {
     expect(dashboard.capacity_waitlist.map((row) => row.itemId)).toEqual(['item-16'])
   })
 
+  it('does not count offlined items toward the 15-item queue capacity', async () => {
+    const items = [
+      ...Array.from({ length: 17 }, (_, n) => makeItem(`candidate-${pad(n)}`, NOW)),
+      ...Array.from({ length: 2 }, (_, n) => makeItem(`offlined-${n}`, NOW)),
+    ]
+    const offlinedAt = formatIso(new Date(NOW.getTime() - 25 * 3_600_000))
+    const initial = {
+      pool: Object.fromEntries(
+        Array.from({ length: 2 }, (_, n) => {
+          const itemId = `offlined-${n}`
+          return [
+            itemId,
+            {
+              itemId,
+              lineageId: itemId,
+              title: itemId,
+              status: 'OFFLINED',
+              republishRound: 0,
+              offlinedAt,
+            },
+          ]
+        }),
+      ),
+      logs: [],
+      nextLogId: 1,
+    }
+    const { store, backend } = setup(NOW, items, { initial })
+
+    const dashboard = await store.getDashboard(NOW)
+
+    expect(dashboard.queue).toHaveLength(15)
+    expect(dashboard.queue.map((row) => row.itemId)).not.toContain('offlined-0')
+    expect(dashboard.offlined.map((row) => row.itemId).sort()).toEqual(['offlined-0', 'offlined-1'])
+    expect(dashboard.capacity_waitlist).toHaveLength(2)
+    expect(pool(backend)['offlined-0'].status).toBe('OFFLINED')
+  })
+
+  it('manually offlines any item and keeps the queue full', async () => {
+    const items = Array.from({ length: 15 }, (_, n) => makeItem(`candidate-${pad(n)}`, NOW))
+    const { store, backend } = setup(NOW, items)
+    const before = await store.getDashboard(NOW)
+    expect(before.queue).toHaveLength(15)
+
+    const item = {
+      itemId: 'manual-item',
+      title: 'Manual item',
+      price: '99.00',
+      createTime: '2026-11-01 00:00:00',
+      exposure: '50',
+      viewCount: '1',
+    }
+    const row = await store.manualOffline(item, { offlinedAt: '2026-11-23T00:00:00+08:00' }, NOW)
+
+    expect(row.status).toBe('OFFLINED')
+    expect(row.offlinedAt).toBe('2026-11-23T00:00:00+08:00')
+    const after = await store.getDashboard(NOW)
+    expect(after.offlined.map((entry) => entry.itemId)).toContain('manual-item')
+    expect(after.queue).toHaveLength(15)
+    expect(logs(backend).some((entry) => entry.itemId === 'manual-item' && entry.action === 'OFFLINE')).toBe(true)
+  })
+
+  it('removes an offlined item from the holding area', async () => {
+    const { store, backend } = setup(NOW, [])
+    await store.manualOffline(
+      { itemId: 'holding-item', title: 'Holding item', price: '88.00' },
+      { offlinedAt: '2026-11-23T00:00:00+08:00' },
+      NOW,
+    )
+
+    const removed = await store.removeOffline('holding-item', NOW)
+    const dashboard = await store.getDashboard(NOW)
+
+    expect(removed.status).toBe('CANCELED')
+    expect(dashboard.offlined.map((row) => row.itemId)).not.toContain('holding-item')
+    expect(pool(backend)['holding-item'].protectionReason).toBe('USER_REMOVED_OFFLINE')
+    expect(logs(backend).some((entry) => entry.itemId === 'holding-item' && entry.action === 'OFFLINE_REMOVE')).toBe(
+      true,
+    )
+  })
+
   it('does not insert candidates from stale or incomplete caches', async () => {
     const items = [makeItem('stale-item', NOW, { ageDays: 15, exposure: '500', views: '0' })]
     const stale = setup(NOW, items, { cacheOptions: { hoursAgo: 37 } })

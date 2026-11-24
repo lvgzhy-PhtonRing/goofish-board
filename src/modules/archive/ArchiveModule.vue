@@ -161,7 +161,9 @@ function dayNumber(day) {
   return String(Number(day.slice(8, 10)))
 }
 
-function formatTime(value) {
+function formatTime(input) {
+  const value = typeof input === 'string' ? input : input?.occurred_at
+  if (input && typeof input === 'object' && input.data?.dateOnly) return '日期补录'
   if (!value) return ''
   const date = new Date(String(value).replace(' ', 'T'))
   return Number.isNaN(date.getTime())
@@ -247,7 +249,7 @@ onMounted(load)
                 <span class="rounded px-1.5 py-0.5 text-[10px] font-bold" :class="eventSourceMeta(block.items[0]).badge">
                   {{ eventSourceMeta(block.items[0]).label }}
                 </span>
-                <span class="text-xs font-normal text-gray-300">{{ formatTime(block.items[0]?.occurred_at) }}</span>
+                <span class="text-xs font-normal text-gray-300">{{ formatTime(block.items[0]) }}</span>
               </p>
 
               <div class="mt-2 space-y-2">

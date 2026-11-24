@@ -12,7 +12,7 @@ import {
 } from './republish.js'
 import { withRetry } from '../services/supabaseClient.js'
 
-const ACTIVE_STATUSES = new Set(['RETESTING', 'QUEUING', 'OFFLINED'])
+const QUEUE_STATUSES = new Set(['RETESTING', 'QUEUING'])
 const TERMINAL_STATUSES = new Set(['REPOSTED', 'CANCELED', 'ARCHIVED'])
 const POOL_CAPACITY = 15
 
@@ -119,9 +119,19 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     const observed = byId(diagnosed.observed)
     const healthy = byId(diagnosed.healthy || [])
 
-    // 用最新有效快照更新或保护现有非终态记录
+    // 用最新有效快照更新或保护现有非终态记录；下架区保持稳定，不参与排队
     for (const [itemId, row] of Object.entries(snapshot)) {
-      if (!ACTIVE_STATUSES.has(row.status) && row.status !== 'PROTECTED') continue
+      if (row.status === 'OFFLINED') {
+        // 只同步否决/数据不足标记，保留上下架时间与暂存状态
+        const flagged = vetoes[itemId] || incomplete[itemId]
+        const current = state.pool[itemId]
+        if (flagged && current && current.protectionReason !== flagged.protectionReason) {
+          current.protectionReason = flagged.protectionReason
+          current.dataUpdatedAt = formatIso(now)
+        }
+        continue
+      }
+      if (!QUEUE_STATUSES.has(row.status) && row.status !== 'PROTECTED') continue
       const item = candidates[itemId] || vetoes[itemId] || incomplete[itemId] || observed[itemId]
       if (!item) {
         if (row.status === 'QUEUING' || row.status === 'RETESTING') {
@@ -144,8 +154,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       }
       if (vetoes[itemId] || incomplete[itemId]) {
         const reason = item.protectionReason || 'METRICS_INCOMPLETE'
-        const newStatus =
-          row.status === 'OFFLINED' ? 'OFFLINED' : reason === 'ROUND_LIMIT' ? 'ARCHIVED' : 'PROTECTED'
+        const newStatus = reason === 'ROUND_LIMIT' ? 'ARCHIVED' : 'PROTECTED'
         if (row.status !== newStatus || row.protectionReason !== reason) {
           log(state, {
             itemId,
@@ -278,15 +287,20 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       return (b.republishScore || 0) - (a.republishScore || 0)
     })
 
-    // 目标队列 = 分层排序前 N 件（扣除复测/静置/周日复核占位）
-    const nonQueueActive = Object.values(state.pool).filter(
-      (row) => row.status === 'RETESTING' || row.status === 'OFFLINED',
-    ).length
+    // 目标队列 = 分层排序前 N 件（扣除复测/周日复核占位；下架区不占位）
+    const nonQueueActive = Object.values(state.pool).filter((row) => row.status === 'RETESTING').length
     const heldQueued = Object.values(state.pool).filter(
       (row) => row.status === 'QUEUING' && !candidates[row.itemId],
     ).length
     const queueCapacity = Math.max(0, POOL_CAPACITY - nonQueueActive - heldQueued)
-    const desired = ordered.slice(0, queueCapacity)
+    const eligible = ordered.filter((item) => {
+      const row = state.pool[item.itemId] || snapshot[item.itemId]
+      if (!row) return true
+      if (TERMINAL_STATUSES.has(row.status)) return false
+      if (row.status === 'OFFLINED' || row.status === 'RETESTING') return false
+      return true
+    })
+    const desired = eligible.slice(0, queueCapacity)
     const desiredIds = new Set(desired.map((item) => item.itemId))
 
     // 队列按优先级重新平衡：低优先级候选让位给更高优先级候选
@@ -313,7 +327,8 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       const itemId = item.itemId
       const row = state.pool[itemId] || snapshot[itemId]
       if (row && TERMINAL_STATUSES.has(row.status)) continue
-      if (row && ACTIVE_STATUSES.has(row.status)) continue
+      if (row && QUEUE_STATUSES.has(row.status)) continue
+      if (row && row.status === 'OFFLINED') continue
       const lineage = row ? row.lineageId : itemId
       const repostRound = row ? row.republishRound || 0 : 0
       const reentry = Boolean(row && row.status === 'PROTECTED')
@@ -340,7 +355,8 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       if (desiredIds.has(item.itemId)) continue
       const row = state.pool[item.itemId] || snapshot[item.itemId]
       if (row && TERMINAL_STATUSES.has(row.status)) continue
-      if (row && ACTIVE_STATUSES.has(row.status)) continue
+      if (row && QUEUE_STATUSES.has(row.status)) continue
+      if (row && row.status === 'OFFLINED') continue
       waitlist.push(item)
     }
 
@@ -353,7 +369,12 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
 
     const blockedOptimization = new Set(
       stored
-        .filter((row) => ACTIVE_STATUSES.has(row.status) || TERMINAL_STATUSES.has(row.status))
+        .filter(
+          (row) =>
+            QUEUE_STATUSES.has(row.status) ||
+            row.status === 'OFFLINED' ||
+            TERMINAL_STATUSES.has(row.status),
+        )
         .map((row) => row.itemId),
     )
     const optimizationCandidates = cache.available
@@ -488,7 +509,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
           '仅 7 至不足 14 天、点击率为 0.8% 至不足 1.5% 且无否决项的商品可开始复测。',
         )
       }
-      const active = Object.values(state.pool).filter((row) => ACTIVE_STATUSES.has(row.status)).length
+      const active = Object.values(state.pool).filter((row) => QUEUE_STATUSES.has(row.status)).length
       if (active >= POOL_CAPACITY) {
         throw new RepublishError('POOL_FULL', '重发池已满（15 件），当前不能开始复测。')
       }
@@ -595,6 +616,91 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
         remark: '用户确认闲鱼端已下架且新版物料已准备',
       })
       return apiRow(state.pool[itemId])
+    })
+  }
+
+  async function manualOffline(item, { offlinedAt } = {}, now = new Date()) {
+    const itemId = String(item?.itemId || '').trim()
+    if (!itemId) {
+      throw new RepublishError('ITEM_ID_MISSING', '缺少商品 ID，无法下架。')
+    }
+    const rawDate = typeof offlinedAt === 'string' ? parseDateTime(offlinedAt) : offlinedAt
+    const offlineDate = rawDate instanceof Date && !Number.isNaN(rawDate.getTime()) ? rawDate : now
+    if (offlineDate.getTime() > now.getTime() + 5 * 60_000) {
+      throw new RepublishError('OFFLINE_TIME_INVALID', '下架日期不能晚于当前时间。')
+    }
+
+    return mutate(async (state) => {
+      const old = state.pool[itemId]
+      if (old && TERMINAL_STATUSES.has(old.status)) {
+        throw new RepublishError('INVALID_STATE', '该商品已归档或已重发，不能再次下架。')
+      }
+      if (old && old.status === 'OFFLINED') {
+        old.offlinedAt = formatIso(offlineDate)
+        old.dataUpdatedAt = formatIso(now)
+        return apiRow(old)
+      }
+
+      const exposure = Math.trunc(Number(item.exposure7d ?? item.exposure) || 0)
+      const views = Math.trunc(Number(item.views7d ?? item.viewCount) || 0)
+      const ctr = item.ctr7d ?? (exposure > 0 ? (views / exposure) * 100 : 0)
+      const merged = {
+        ...item,
+        itemId,
+        title: item.title ?? old?.title ?? '',
+        price: item.price ?? old?.price ?? '',
+        stock: item.stock ?? old?.stock ?? '',
+        sales: item.sales ?? old?.sales ?? '',
+        createTime: item.createTime ?? old?.createTime ?? null,
+        listingAgeDays: item.listingAgeDays ?? old?.listingAgeDays ?? null,
+        exposure7d: exposure,
+        views7d: views,
+        ctr7d: ctr,
+        inquiryCount: Math.trunc(Number(item.inquiryCount ?? item.inquiry) || 0),
+        orderCount: Math.trunc(Number(item.orderCount ?? item.payCount) || 0),
+        advice: item.advice || old?.lastDiagnosis || '',
+        picUrl: item.picUrl ?? old?.picUrl ?? '',
+      }
+      updateRow(state, merged, {
+        status: 'OFFLINED',
+        lineageId: old?.lineageId || itemId,
+        repostRound: old?.republishRound || 0,
+        now,
+        inPoolAt: old?.inPoolAt ?? formatIso(now),
+        protectionReason: null,
+      })
+      state.pool[itemId].offlinedAt = formatIso(offlineDate)
+      log(state, {
+        itemId,
+        title: merged.title,
+        repostRound: old?.republishRound || 0,
+        action: 'OFFLINE',
+        now,
+        remark: '用户手动下架（暂存）',
+        data: { manual: true, offlinedAt: formatIso(offlineDate) },
+      })
+      return apiRow(state.pool[itemId])
+    })
+  }
+
+  async function removeOffline(itemId, now = new Date()) {
+    return mutate(async (state) => {
+      const row = state.pool[itemId]
+      if (!row || row.status !== 'OFFLINED') {
+        throw new RepublishError('INVALID_STATE', '该商品不在下架区。')
+      }
+      row.status = 'CANCELED'
+      row.protectionReason = 'USER_REMOVED_OFFLINE'
+      row.dataUpdatedAt = formatIso(now)
+      log(state, {
+        itemId,
+        title: row.title,
+        repostRound: row.republishRound,
+        action: 'OFFLINE_REMOVE',
+        now,
+        remark: '用户从下架区移出',
+      })
+      return apiRow(row)
     })
   }
 
@@ -721,6 +827,8 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     startOptimization,
     recordNewListing,
     confirmOffline,
+    manualOffline,
+    removeOffline,
     confirmRepost,
     cancelItem,
   }

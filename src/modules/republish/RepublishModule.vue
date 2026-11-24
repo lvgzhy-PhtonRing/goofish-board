@@ -2,7 +2,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { createCloudStore } from '../../services/cloudState.js'
 import { createRepublishStore } from '../../engine/republishStore.js'
-import { insertEvent } from '../../services/automationApi.js'
+import { fetchShopStatus, insertEvent } from '../../services/automationApi.js'
+import { loadRow } from '../../services/supabaseClient.js'
 import { sourceMeta } from '../../services/dataSources.js'
 import PendingPanel from './PendingPanel.vue'
 import ProductThumb from '../../components/ProductThumb.vue'
@@ -33,6 +34,12 @@ const repostTarget = ref(null)
 const newItemId = ref('')
 const toastMessage = ref('')
 const toastTone = ref('success')
+const manualOpen = ref(false)
+const manualLoading = ref(false)
+const manualError = ref('')
+const manualKeyword = ref('')
+const manualDate = ref('')
+const manualItems = ref([])
 
 let clockTimer
 let toastTimer
@@ -44,9 +51,7 @@ const quota = computed(() => dashboard.value?.quota)
 const dataStatus = computed(() => dashboard.value?.data_status)
 const poolIsFull = computed(() => {
   if (!dashboard.value) return false
-  return (
-    dashboard.value.queue.length + dashboard.value.retesting.length + dashboard.value.offlined.length >= 15
-  )
+  return dashboard.value.queue.length + dashboard.value.retesting.length >= 15
 })
 
 const statusReason = {
@@ -84,6 +89,57 @@ function queueLayer(item) {
   return queueLayers[item.queueKind] || null
 }
 
+function localDate(date) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+const today = localDate(new Date())
+
+const poolStatusById = computed(() => {
+  const map = new Map()
+  for (const row of dashboard.value?.queue || []) map.set(String(row.itemId), '排队中')
+  for (const row of dashboard.value?.retesting || []) map.set(String(row.itemId), '复测中')
+  for (const row of dashboard.value?.protected || []) {
+    map.set(String(row.itemId), row.protectionReason === 'HEALTHY' ? '健康' : '保护')
+  }
+  for (const row of dashboard.value?.offlined || []) map.set(String(row.itemId), '下架区')
+  return map
+})
+
+const manualFiltered = computed(() => {
+  const text = manualKeyword.value.trim().toLowerCase()
+  if (!text) return manualItems.value
+  const priceText = text.replace(/[¥￥\s,]/g, '')
+  return manualItems.value.filter((item) => {
+    const title = String(item.title || '').toLowerCase()
+    const itemId = String(item.itemId || '')
+    const price = String(item.price || '')
+    return title.includes(text) || itemId.includes(text) || (priceText !== '' && price.includes(priceText))
+  })
+})
+
+function manualStatus(itemId) {
+  return poolStatusById.value.get(String(itemId)) || '未入池'
+}
+
+function manualStatusTone(itemId) {
+  switch (manualStatus(itemId)) {
+    case '排队中':
+      return 'bg-sky-50 text-sky-700'
+    case '复测中':
+      return 'bg-violet-50 text-violet-700'
+    case '健康':
+      return 'bg-emerald-50 text-emerald-700'
+    case '保护':
+      return 'bg-amber-50 text-amber-800'
+    case '下架区':
+      return 'bg-red-50 text-red-700'
+    default:
+      return 'bg-gray-100 text-gray-600'
+  }
+}
+
 function toast(message, tone = 'success') {
   toastMessage.value = message
   toastTone.value = tone
@@ -105,7 +161,7 @@ async function loadDashboard() {
   }
 }
 
-async function recordUserOffline(item) {
+async function recordUserOffline(item, occurredAt = new Date().toISOString(), dateOnly = false) {
   try {
     await insertEvent(
       props.config,
@@ -113,14 +169,78 @@ async function recordUserOffline(item) {
       {
         item_id: item.itemId,
         type: 'offline',
-        occurred_at: new Date().toISOString(),
-        data: { title: item.title, price: item.price, source: 'user' },
+        occurred_at: occurredAt,
+        data: { title: item.title, price: item.price, source: 'user', ...(dateOnly ? { dateOnly: true } : {}) },
       },
       props.onSession || undefined,
     )
   } catch {
     // 动态记录失败不影响打卡结果
   }
+}
+
+async function loadManualItems() {
+  manualLoading.value = true
+  manualError.value = ''
+  try {
+    const [{ payload }, status] = await Promise.all([
+      loadRow(props.config, 'goofish_vitality', props.session, {
+        onSession: props.onSession || undefined,
+      }),
+      fetchShopStatus(props.config, props.session, props.onSession || undefined).catch(() => null),
+    ])
+    const merged = new Map()
+    for (const item of status?.payload?.items || []) {
+      const itemId = String(item?.itemId || '')
+      if (itemId) merged.set(itemId, { ...item, source: 'cdp' })
+    }
+    for (const item of payload?.vitality || []) {
+      const itemId = String(item?.itemId || '')
+      if (!itemId) continue
+      merged.set(itemId, { ...(merged.get(itemId) || {}), ...item, source: 'excel' })
+    }
+    const offlined = new Set((dashboard.value?.offlined || []).map((row) => String(row.itemId)))
+    manualItems.value = [...merged.values()].filter((item) => !offlined.has(String(item.itemId)))
+  } catch (error) {
+    manualError.value = error?.message || '读取商品列表失败'
+  } finally {
+    manualLoading.value = false
+  }
+}
+
+async function openManualOffline() {
+  manualOpen.value = true
+  manualKeyword.value = ''
+  manualDate.value = localDate(new Date())
+  await loadManualItems()
+}
+
+async function manualOfflineAction(item) {
+  const now = new Date()
+  const dateOnly = manualDate.value !== localDate(now)
+  if (!manualDate.value) {
+    toast('请选择下架日期', 'danger')
+    return
+  }
+  const offlinedAt = dateOnly ? `${manualDate.value}T00:00:00+08:00` : now.toISOString()
+  const ok = await runAction(
+    `manual-offline:${item.itemId}`,
+    () => store.manualOffline(item, { offlinedAt }, now),
+    '已下架并进入暂存区',
+  )
+  if (!ok) return
+  await recordUserOffline(item, offlinedAt, dateOnly)
+  activeTab.value = 'offlined'
+  manualOpen.value = false
+}
+
+async function removeOfflineAction(item) {
+  if (!window.confirm(`确认把「${item.title || item.itemId}」移出下架区？`)) return
+  await runAction(
+    `remove-offline:${item.itemId}`,
+    () => store.removeOffline(item.itemId, new Date()),
+    '已移出下架区',
+  )
 }
 
 async function confirmOfflineAction(item) {
@@ -169,6 +289,10 @@ function formatDate(value) {
   if (!value) return '—'
   const date = new Date(String(value).replace(' ', 'T'))
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+}
+
+function formatDay(value) {
+  return value ? String(value).slice(0, 10) : '—'
 }
 
 function formatNumber(value) {
@@ -268,9 +392,14 @@ onUnmounted(() => {
           只给建议并记录你在闲鱼端已完成的动作；不登录、不发布、不下架、不发任何闲鱼请求。
         </p>
       </div>
-      <button class="btn btn-outline" :disabled="isLoading" @click="loadDashboard">
-        <i class="fa-solid fa-arrows-rotate" :class="isLoading ? 'animate-spin' : ''" />刷新
-      </button>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-outline" :disabled="isLoading" @click="openManualOffline">
+          <i class="fa-solid fa-arrow-down" />手动下架
+        </button>
+        <button class="btn btn-outline" :disabled="isLoading" @click="loadDashboard">
+          <i class="fa-solid fa-arrows-rotate" :class="isLoading ? 'animate-spin' : ''" />刷新
+        </button>
+      </div>
     </header>
 
     <section
@@ -519,7 +648,7 @@ onUnmounted(() => {
         <button
           v-for="tab in [
             { key: 'queue', label: '排队中', count: dashboard?.queue.length ?? 0 },
-            { key: 'offlined', label: '24h 静置', count: dashboard?.offlined.length ?? 0 },
+            { key: 'offlined', label: '下架区', count: dashboard?.offlined.length ?? 0 },
             { key: 'protected', label: '保护 / 健康', count: dashboard?.protected.length ?? 0 },
           ]"
           :key="tab.key"
@@ -648,9 +777,13 @@ onUnmounted(() => {
       </div>
 
       <div v-show="activeTab === 'offlined'" class="apple-card">
-        <p class="flex items-center gap-2 text-sm font-bold text-gray-800">
-          <i class="fa-solid fa-clock text-warning" />24 小时静置
-        </p>
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <p class="flex items-center gap-2 text-sm font-bold text-gray-800">
+            <i class="fa-solid fa-box-open text-warning" />下架区（暂存）
+            <span class="rounded bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-500">{{ dashboard?.offlined.length ?? 0 }} 件</span>
+          </p>
+          <p class="text-xs text-gray-400">不占 15 件排队池；满 24 小时可重发，也可直接移出</p>
+        </div>
         <div class="mt-3 space-y-3">
           <article
             v-for="item in dashboard?.offlined || []"
@@ -661,7 +794,10 @@ onUnmounted(() => {
               <ProductThumb :item-id="item.itemId" :pic-url="item.picUrl" :base="config.supabaseUrl" :size="28" />
               <div class="min-w-0">
                 <p class="truncate font-bold text-gray-900">{{ item.title }}</p>
-                <p class="mt-1 font-mono text-[10px] text-gray-400">{{ item.itemId }} · 第 {{ item.republishRound + 1 }} 轮</p>
+                <p class="mt-1 font-mono text-[10px] text-gray-400">
+                  {{ item.itemId }} · 第 {{ item.republishRound + 1 }} 轮
+                  <span v-if="item.offlinedAt"> · 下架 {{ formatDay(item.offlinedAt) }}</span>
+                </p>
                 <p v-if="item.protectionReason" class="mt-1 text-xs font-semibold text-amber-700">
                   {{ reasonText[item.protectionReason] || item.protectionReason }}
                 </p>
@@ -671,11 +807,16 @@ onUnmounted(() => {
               <p class="text-[10px] font-bold uppercase tracking-wider text-amber-700">静置倒计时</p>
               <p class="mt-1 font-mono text-sm font-black text-amber-950">{{ countdown(item) }}</p>
             </div>
-            <button class="btn btn-primary btn-sm" :disabled="!repostReady(item) || !!quota?.locked || !!actionKey" @click="openRepost(item)">
-              <i class="fa-solid fa-circle-check" />确认重发
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button class="btn btn-primary btn-sm" :disabled="!repostReady(item) || !!quota?.locked || !!actionKey" @click="openRepost(item)">
+                <i class="fa-solid fa-circle-check" />确认重发
+              </button>
+              <button class="btn btn-outline btn-sm" :disabled="!!actionKey" @click="removeOfflineAction(item)">
+                <i class="fa-solid fa-box-archive" />移出暂存
+              </button>
+            </div>
           </article>
-          <div v-if="!dashboard?.offlined.length" class="py-10 text-center text-sm text-gray-500">暂无静置商品</div>
+          <div v-if="!dashboard?.offlined.length" class="py-10 text-center text-sm text-gray-500">下架区暂无商品</div>
         </div>
       </div>
 
@@ -716,6 +857,74 @@ onUnmounted(() => {
       </span>
       <span>数据时间：{{ formatDate(dataStatus?.fetched_at) }}</span>
     </footer>
+
+    <div
+      v-if="manualOpen"
+      class="modal-overlay"
+      tabindex="-1"
+      @click.self="manualOpen = false"
+      @keydown.esc="manualOpen = false"
+    >
+      <div class="glass-modal flex max-h-[82vh] w-full max-w-3xl flex-col p-6">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-bold text-gray-900">手动下架（进入暂存区）</h3>
+            <p class="mt-1 text-sm text-gray-500">选择任意商品并记录下架日期；不占 15 件排队池。</p>
+          </div>
+          <button class="btn btn-outline btn-sm" @click="manualOpen = false">关闭</button>
+        </div>
+
+        <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_190px]">
+          <input v-model="manualKeyword" class="apple-input" type="search" placeholder="搜索标题 / 商品 ID / 价格" />
+          <label class="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-500">
+            <span class="whitespace-nowrap">下架日期</span>
+            <input v-model="manualDate" class="min-w-0 flex-1 bg-transparent text-sm text-gray-800 outline-none" type="date" :max="today" />
+          </label>
+        </div>
+        <p class="mt-2 text-[11px] text-gray-400">历史日期按当天 00:00 记录；今天按下架时刻记录。下架后自动写入店铺动态。</p>
+
+        <section v-if="manualError" class="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-danger">
+          {{ manualError }}
+        </section>
+
+        <div class="mt-3 min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-100">
+          <div v-if="manualLoading" class="py-10 text-center text-sm text-gray-400">
+            <i class="fa-solid fa-circle-notch mr-2 animate-spin" />正在读取商品…
+          </div>
+          <div v-else-if="!manualFiltered.length" class="py-10 text-center text-sm text-gray-400">
+            没有匹配的商品
+          </div>
+          <div
+            v-for="item in manualFiltered"
+            v-else
+            :key="item.itemId"
+            class="flex items-center gap-3 border-b border-gray-100 px-3 py-2.5 last:border-b-0"
+          >
+            <ProductThumb :item-id="item.itemId" :pic-url="item.picUrl" :base="config.supabaseUrl" :size="36" />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold text-gray-800">{{ item.title || item.itemId }}</p>
+              <p class="mt-0.5 font-mono text-[10px] text-gray-400">
+                {{ item.itemId }} · ¥{{ formatPrice(item.price) }}
+                <span v-if="item.createTime"> · 上架 {{ String(item.createTime).slice(0, 10) }}</span>
+              </p>
+            </div>
+            <span class="whitespace-nowrap rounded px-2 py-0.5 text-[10px] font-bold" :class="manualStatusTone(item.itemId)">
+              {{ manualStatus(item.itemId) }}
+            </span>
+            <button
+              class="btn btn-outline btn-sm whitespace-nowrap"
+              :disabled="!!actionKey"
+              @click="manualOfflineAction(item)"
+            >
+              <i class="fa-solid" :class="actionKey === `manual-offline:${item.itemId}` ? 'fa-circle-notch animate-spin' : 'fa-arrow-down'" />
+              下架
+            </button>
+          </div>
+        </div>
+
+        <p class="mt-3 text-[11px] text-gray-400">共 {{ manualFiltered.length }} 件可选 · 已在下架区的商品不重复显示</p>
+      </div>
+    </div>
 
     <div v-if="repostDialogOpen" class="modal-overlay" tabindex="-1" @click.self="repostDialogOpen = false" @keydown.esc="repostDialogOpen = false">
       <div class="glass-modal w-full max-w-md p-6">

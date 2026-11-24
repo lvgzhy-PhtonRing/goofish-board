@@ -1,8 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { fetchEvents, fetchShopStatus } from '../../services/automationApi.js'
 import { loadRow } from '../../services/supabaseClient.js'
 import { parseNumber } from '../../engine/republish.js'
 import { sourceMeta } from '../../services/dataSources.js'
+import { buildVitalityStatus } from '../../services/vitalityStatus.js'
 import ProductThumb from '../../components/ProductThumb.vue'
 
 const props = defineProps({
@@ -14,13 +16,17 @@ const props = defineProps({
 const loading = ref(true)
 const error = ref('')
 const payload = ref(null)
+const shopStatus = ref(null)
+const events = ref([])
 const sortKey = ref('exposure')
 const sortDir = ref('desc')
 const keyword = ref('')
+const activeGroup = ref('all')
 
 const columns = [
   { key: 'itemId', label: '商品 ID', align: 'left' },
   { key: 'title', label: '标题', align: 'left' },
+  { key: 'status', label: '状态', align: 'center' },
   { key: 'price', label: '价格', align: 'right' },
   { key: 'stock', label: '库存', align: 'center' },
   { key: 'sales', label: '销量', align: 'center' },
@@ -36,6 +42,22 @@ const columns = [
 const totalCount = computed(() => (Array.isArray(payload.value?.vitality) ? payload.value.vitality.length : 0))
 const isSearching = computed(() => keyword.value.trim().length > 0)
 
+const vitalityStatus = computed(() =>
+  buildVitalityStatus(payload.value?.vitality || [], shopStatus.value, events.value),
+)
+const statusAvailable = computed(() => vitalityStatus.value.cdpAvailable)
+const onSaleCount = computed(() =>
+  statusAvailable.value ? totalCount.value - vitalityStatus.value.missingCount : 0,
+)
+const groupTabs = computed(() => {
+  if (!statusAvailable.value) return [{ key: 'all', label: '全部', count: totalCount.value }]
+  return [
+    { key: 'all', label: '全部', count: totalCount.value },
+    { key: 'onsale', label: '在售', count: onSaleCount.value },
+    { key: 'missing', label: '下架·售出', count: vitalityStatus.value.missingCount },
+  ]
+})
+
 const items = computed(() => {
   let list = Array.isArray(payload.value?.vitality) ? [...payload.value.vitality] : []
   const text = keyword.value.trim().toLowerCase()
@@ -48,11 +70,18 @@ const items = computed(() => {
       return title.includes(text) || itemId.includes(text) || (priceText !== '' && price.includes(priceText))
     })
   }
+  if (statusAvailable.value && activeGroup.value !== 'all') {
+    const onSale = vitalityStatus.value.onSaleIds
+    list = list.filter((item) =>
+      activeGroup.value === 'onsale' ? onSale.has(String(item.itemId || '')) : !onSale.has(String(item.itemId || '')),
+    )
+  }
   list = list.map((item) => {
     const exposure = parseNumber(item.exposure)
     const views = parseNumber(item.viewCount)
     const ctr = exposure !== null && exposure > 0 && views !== null ? (views / exposure) * 100 : null
-    return { ...item, ctr }
+    const cdpStatus = vitalityStatus.value.statusById.get(String(item.itemId || ''))
+    return { ...item, ctr, cdpStatus }
   })
   const key = sortKey.value
   const dir = sortDir.value === 'asc' ? 1 : -1
@@ -96,7 +125,23 @@ function ctrTone(item) {
   return 'text-success'
 }
 
+function statusTone(status) {
+  switch (status?.key) {
+    case 'onsale':
+      return 'bg-emerald-50 text-emerald-700'
+    case 'sold':
+      return 'bg-sky-50 text-sky-700'
+    case 'offline':
+      return 'bg-red-50 text-red-700'
+    case 'missing':
+      return 'bg-amber-50 text-amber-800'
+    default:
+      return 'bg-gray-100 text-gray-500'
+  }
+}
+
 function toggleSort(key) {
+  if (key === 'status') return
   if (sortKey.value === key) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   else {
     sortKey.value = key
@@ -118,10 +163,16 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const { payload: row } = await loadRow(props.config, 'goofish_vitality', props.session, {
-      onSession: props.onSession || undefined,
-    })
+    const [{ payload: row }, status, eventRows] = await Promise.all([
+      loadRow(props.config, 'goofish_vitality', props.session, {
+        onSession: props.onSession || undefined,
+      }),
+      fetchShopStatus(props.config, props.session, props.onSession || undefined).catch(() => null),
+      fetchEvents(props.config, props.session, props.onSession || undefined).catch(() => []),
+    ])
     payload.value = row
+    shopStatus.value = status
+    events.value = Array.isArray(eventRows) ? eventRows : []
   } catch (err) {
     error.value = err?.message || '读取商品活力失败'
   } finally {
@@ -172,20 +223,42 @@ onMounted(load)
         <span class="rounded-md px-2 py-0.5" :class="sourceMeta('excel').badge">
           来源：{{ sourceMeta('excel').label }} · 可信度：{{ sourceMeta('excel').confidence }}
         </span>
+        <span v-if="statusAvailable" class="rounded-md bg-emerald-50 px-2 py-0.5 text-emerald-700">
+          CDP 在售 {{ vitalityStatus.cdpCount }} 件
+        </span>
+        <span v-else class="rounded-md bg-amber-50 px-2 py-0.5 text-amber-800">
+          尚未抓取 CDP 在售清单
+        </span>
+        <span v-if="statusAvailable && vitalityStatus.newCdpCount" class="rounded-md bg-sky-50 px-2 py-0.5 text-sky-700">
+          CDP 新品 {{ vitalityStatus.newCdpCount }} 件未进 Excel
+        </span>
         <span class="ml-auto font-semibold text-gray-700">
           共 {{ totalCount }} 件<span v-if="isSearching" class="ml-1 text-primary">（匹配 {{ count }} 件）</span>
         </span>
       </div>
 
+      <div v-if="statusAvailable" class="flex flex-wrap items-center gap-2">
+        <button
+          v-for="tab in groupTabs"
+          :key="tab.key"
+          class="rounded-lg px-3 py-1.5 text-xs font-bold transition-colors"
+          :class="activeGroup === tab.key ? 'bg-gray-900 text-white' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
+          @click="activeGroup = tab.key"
+        >
+          {{ tab.label }}
+          <span class="ml-1" :class="activeGroup === tab.key ? 'text-gray-300' : 'text-gray-400'">{{ tab.count }}</span>
+        </button>
+      </div>
+
       <div class="apple-card overflow-x-auto p-0">
-        <table class="apple-table min-w-[1100px]">
+        <table class="apple-table min-w-[1200px]">
           <thead>
             <tr>
               <th
                 v-for="column in columns"
                 :key="column.key"
-                class="cursor-pointer select-none whitespace-nowrap"
-                :class="[alignClass(column), column.key === 'itemId' ? 'w-[84px]' : '']"
+                class="select-none whitespace-nowrap"
+                :class="[alignClass(column), column.key === 'itemId' ? 'w-[84px]' : '', column.key === 'status' ? 'cursor-default' : 'cursor-pointer']"
                 @click="toggleSort(column.key)"
               >
                 {{ column.label }}
@@ -214,6 +287,11 @@ onMounted(load)
                     <ProductThumb :item-id="item.itemId" :pic-url="item.picUrl" :base="config.supabaseUrl" :size="28" />
                     <span class="block max-w-[240px] truncate">{{ cellValue(item, column) }}</span>
                   </div>
+                </template>
+                <template v-else-if="column.key === 'status'">
+                  <span class="rounded px-2 py-0.5 text-[10px] font-bold" :class="statusTone(item.cdpStatus)">
+                    {{ item.cdpStatus?.label || '—' }}
+                  </span>
                 </template>
                 <template v-else-if="column.key === 'price'">
                   <span class="font-semibold text-gray-900">¥{{ cellValue(item, column) }}</span>
