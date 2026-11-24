@@ -110,7 +110,6 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
     const snapshot = Object.fromEntries(
       Object.entries(state.pool).map(([itemId, row]) => [itemId, { ...row }]),
     )
-    let activeCount = Object.values(snapshot).filter((row) => ACTIVE_STATUSES.has(row.status)).length
     const waitlist = []
 
     const byId = (rows) => Object.fromEntries(rows.filter((row) => row.itemId).map((row) => [row.itemId, row]))
@@ -140,7 +139,6 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
             now,
             remark: '商品未出现在最新完整活力缓存中，暂停出库',
           })
-          activeCount -= 1
         }
         continue
       }
@@ -165,7 +163,6 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
           now,
           protectionReason: reason,
         })
-        if (ACTIVE_STATUSES.has(row.status) && !ACTIVE_STATUSES.has(newStatus)) activeCount -= 1
         continue
       }
 
@@ -200,7 +197,6 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
             now,
             remark: '点击健康（曝光充足且 CTR 正常），移出重发队列',
           })
-          if (ACTIVE_STATUSES.has(row.status)) activeCount -= 1
         } else {
           updateRow(state, healthy[itemId], {
             status: 'PROTECTED',
@@ -247,7 +243,6 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
               now,
               remark: '优化满 72 小时后点击率已回升至 1.5% 或以上',
             })
-            activeCount -= 1
           } else {
             latest.priority = 'P2'
             latest.advice = '【P2 | 复测失败】优化满 3 天后点击率仍低于 1.5%，可进入重发队列。'
@@ -282,15 +277,43 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       if (a.queueKind === 'activate') return (a.exposure7d || 0) - (b.exposure7d || 0)
       return (b.republishScore || 0) - (a.republishScore || 0)
     })
-    for (const item of ordered) {
+
+    // 目标队列 = 分层排序前 N 件（扣除复测/静置/周日复核占位）
+    const nonQueueActive = Object.values(state.pool).filter(
+      (row) => row.status === 'RETESTING' || row.status === 'OFFLINED',
+    ).length
+    const heldQueued = Object.values(state.pool).filter(
+      (row) => row.status === 'QUEUING' && !candidates[row.itemId],
+    ).length
+    const queueCapacity = Math.max(0, POOL_CAPACITY - nonQueueActive - heldQueued)
+    const desired = ordered.slice(0, queueCapacity)
+    const desiredIds = new Set(desired.map((item) => item.itemId))
+
+    // 队列按优先级重新平衡：低优先级候选让位给更高优先级候选
+    for (const row of Object.values(state.pool)) {
+      if (row.status !== 'QUEUING' || desiredIds.has(row.itemId) || !candidates[row.itemId]) continue
+      updateRow(state, candidates[row.itemId], {
+        status: 'PROTECTED',
+        lineageId: row.lineageId,
+        repostRound: row.republishRound,
+        now,
+        protectionReason: 'CAPACITY_WAITLIST',
+      })
+      log(state, {
+        itemId: row.itemId,
+        title: row.title,
+        repostRound: row.republishRound,
+        action: 'PROTECT',
+        now,
+        remark: '容量候补（按分层优先级让位）',
+      })
+    }
+
+    for (const item of desired) {
       const itemId = item.itemId
-      const row = snapshot[itemId]
+      const row = state.pool[itemId] || snapshot[itemId]
       if (row && TERMINAL_STATUSES.has(row.status)) continue
       if (row && ACTIVE_STATUSES.has(row.status)) continue
-      if (activeCount >= POOL_CAPACITY) {
-        waitlist.push(item)
-        continue
-      }
       const lineage = row ? row.lineageId : itemId
       const repostRound = row ? row.republishRound || 0 : 0
       const reentry = Boolean(row && row.status === 'PROTECTED')
@@ -311,7 +334,14 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
           remark: '保护条件解除且仍符合入池条件',
         })
       }
-      activeCount += 1
+    }
+
+    for (const item of ordered) {
+      if (desiredIds.has(item.itemId)) continue
+      const row = state.pool[item.itemId] || snapshot[item.itemId]
+      if (row && TERMINAL_STATUSES.has(row.status)) continue
+      if (row && ACTIVE_STATUSES.has(row.status)) continue
+      waitlist.push(item)
     }
 
     return waitlist

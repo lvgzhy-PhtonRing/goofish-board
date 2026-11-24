@@ -220,6 +220,30 @@ describe('getDashboard', () => {
     expect(dashboard.protected.find((row) => row.itemId === 'healthy')?.protectionReason).toBe('HEALTHY')
   })
 
+  it('rebalances the queue to the top exposure layers', async () => {
+    const initialItems = Array.from({ length: 15 }, (_, n) =>
+      makeItem(`item-${pad(n + 2)}`, NOW, { ageDays: 30, exposure: String(n + 2), views: '0' }),
+    )
+    const { store, backend, setVitality } = setup(NOW, initialItems)
+    await store.getDashboard(NOW)
+
+    setVitality(
+      [makeItem('item-01', NOW, { ageDays: 30, exposure: '1', views: '0' }), ...initialItems],
+      {},
+      NOW,
+    )
+    const dashboard = await store.getDashboard(NOW)
+
+    expect(dashboard.queue).toHaveLength(15)
+    expect(dashboard.queue[0].itemId).toBe('item-01')
+    expect(dashboard.queue.map((row) => row.itemId)).not.toContain('item-16')
+    expect(pool(backend)['item-16']).toMatchObject({
+      status: 'PROTECTED',
+      protectionReason: 'CAPACITY_WAITLIST',
+    })
+    expect(dashboard.capacity_waitlist.map((row) => row.itemId)).toEqual(['item-16'])
+  })
+
   it('does not insert candidates from stale or incomplete caches', async () => {
     const items = [makeItem('stale-item', NOW, { ageDays: 15, exposure: '500', views: '0' })]
     const stale = setup(NOW, items, { cacheOptions: { hoursAgo: 37 } })

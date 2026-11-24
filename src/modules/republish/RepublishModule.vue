@@ -71,6 +71,7 @@ const reasonText = {
   RETEST_PASSED: '复测点击率已回升',
   CTR_RECOVERED: '点击率已回升，可移出',
   HEALTHY: '点击健康（建议改价格/详情，不重发）',
+  CAPACITY_WAITLIST: '容量候补（池满，等待出池）',
 }
 
 const queueLayers = {
