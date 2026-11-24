@@ -27,6 +27,7 @@ create table if not exists public.goofish_pending (
   question text not null,
   options jsonb not null,
   suggestion text,
+  extra jsonb not null default '{}'::jsonb,
   status text not null default 'pending',
   resolution text,
   owner_id uuid references auth.users(id),
