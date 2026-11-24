@@ -45,7 +45,7 @@ let clockTimer
 let toastTimer
 
 const topQueue = computed(() =>
-  (dashboard.value?.queue || []).filter((item) => !skipped.value.has(item.itemId)).slice(0, 3),
+  (dashboard.value?.queue || []).filter((item) => !skipped.value.has(item.itemId)).slice(0, 4),
 )
 const quota = computed(() => dashboard.value?.quota)
 const dataStatus = computed(() => dashboard.value?.data_status)
@@ -277,7 +277,7 @@ async function runAction(key, action, success) {
 }
 
 function checklistFor(itemId) {
-  return checklist.value[itemId] || { offline: false, materials: false, keywords: false }
+  return checklist.value[itemId] || { confirmed: false }
 }
 
 function setChecklist(itemId, key, value) {
@@ -539,14 +539,14 @@ onUnmounted(() => {
         <div>
           <h2 class="text-lg font-black text-gray-900">优先动作</h2>
           <p class="text-xs text-gray-500">
-            按重发更新指数（权重）排序的 Top 3 · 健康商品（不重发）{{ dashboard?.healthy_count ?? 0 }} 件
+            按重发更新指数（权重）排序的 Top 4 · 健康商品（不重发）{{ dashboard?.healthy_count ?? 0 }} 件
           </p>
         </div>
-        <span class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">{{ topQueue.length }} / 3</span>
+        <span class="rounded-md bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">{{ topQueue.length }} / 4</span>
       </div>
 
       <div v-if="isLoading && !dashboard" class="grid gap-4 xl:grid-cols-2">
-        <div v-for="i in 2" :key="i" class="apple-card h-56 animate-pulse bg-gray-50" />
+        <div v-for="i in 4" :key="i" class="apple-card h-56 animate-pulse bg-gray-50" />
       </div>
       <div v-else-if="topQueue.length" class="grid gap-4 xl:grid-cols-2">
         <div v-for="item in topQueue" :key="item.itemId" class="apple-card overflow-hidden p-0">
@@ -621,43 +621,25 @@ onUnmounted(() => {
               <p class="text-sm leading-relaxed text-sky-950">{{ item.advice }}</p>
             </div>
 
-            <div class="grid gap-2 sm:grid-cols-2">
-              <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-gray-200 p-2.5 text-xs text-gray-600">
-                <input
-                  type="checkbox"
-                  class="mt-0.5"
-                  :checked="checklistFor(item.itemId).offline"
-                  @change="setChecklist(item.itemId, 'offline', $event.target.checked)"
-                />
-                <span>已在闲鱼端手动下架</span>
-              </label>
-              <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-gray-200 p-2.5 text-xs text-gray-600">
-                <input
-                  type="checkbox"
-                  class="mt-0.5"
-                  :checked="checklistFor(item.itemId).materials"
-                  @change="setChecklist(item.itemId, 'materials', $event.target.checked)"
-                />
-                <span>已准备新版首图与标题（不得沿用原图/原标题，否则按重复铺货降权）</span>
-              </label>
-              <label
-                v-if="item.queueKind === 'activate'"
-                class="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-300 bg-slate-50 p-2.5 text-xs text-slate-700 sm:col-span-2"
-              >
-                <input
-                  type="checkbox"
-                  class="mt-0.5"
-                  :checked="checklistFor(item.itemId).keywords"
-                  @change="setChecklist(item.itemId, 'keywords', $event.target.checked)"
-                />
-                <span>标题已补全关键词（低曝光商品必做：品牌/编号/车型，参考同类热卖标题）</span>
-              </label>
-            </div>
+            <label class="flex cursor-pointer items-start gap-2.5 rounded-lg border border-gray-200 p-3 text-xs text-gray-600">
+              <input
+                type="checkbox"
+                class="mt-0.5"
+                :checked="checklistFor(item.itemId).confirmed"
+                @change="setChecklist(item.itemId, 'confirmed', $event.target.checked)"
+              />
+              <span>
+                <strong class="text-gray-800">已完成闲鱼端下架，并准备新版首图与标题</strong>
+                <span class="mt-1 block text-gray-400">
+                  不得沿用原图/原标题；低曝光商品需补全品牌/编号/车型关键词。
+                </span>
+              </span>
+            </label>
 
             <div class="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
               <button
                 class="btn btn-danger btn-sm"
-                :disabled="!dataStatus?.available || !!quota?.locked || !checklistFor(item.itemId).offline || !checklistFor(item.itemId).materials || (item.queueKind === 'activate' && !checklistFor(item.itemId).keywords) || !!actionKey"
+                :disabled="!dataStatus?.available || !!quota?.locked || !checklistFor(item.itemId).confirmed || !!actionKey"
                 @click="confirmOfflineAction(item)"
               >
                 <i class="fa-solid" :class="actionKey === `offline:${item.itemId}` ? 'fa-circle-notch animate-spin' : 'fa-arrow-down'" />

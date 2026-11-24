@@ -451,7 +451,7 @@ export function createRepublishStore({ readState, writeState, readVitality }) {
       quota: quotaView(newListings, reposts),
       healthy_count: (diagnosed.healthy || []).length,
       pool_statuses: Object.fromEntries(stored.map((row) => [row.itemId, row.status])),
-      top_action_queue: queue.slice(0, 3),
+      top_action_queue: queue.slice(0, 4),
       queue,
       retesting,
       optimization_candidates: optimizationCandidates,

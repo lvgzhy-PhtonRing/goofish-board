@@ -113,7 +113,7 @@ function logs(backend) {
 const NOW = new Date(2026, 10, 23, 12) // 2026-11-23 12:00 本地（周一）
 
 describe('getDashboard', () => {
-  it('syncs capacity, keeps top3 equal to queue head and preserves terminal states', async () => {
+  it('syncs capacity, keeps top4 equal to queue head and preserves terminal states', async () => {
     const items = [
       ...Array.from({ length: 17 }, (_, n) => makeItem(`candidate-${pad(n)}`, NOW)),
       makeItem('protected-pay', NOW, { payments: '1' }),
@@ -136,7 +136,7 @@ describe('getDashboard', () => {
     expect(first.data_status.available).toBe(true)
     expect(first.queue).toHaveLength(15)
     expect(first.capacity_waitlist).toHaveLength(2)
-    expect(first.top_action_queue.map((row) => row.itemId)).toEqual(first.queue.slice(0, 3).map((row) => row.itemId))
+    expect(first.top_action_queue.map((row) => row.itemId)).toEqual(first.queue.slice(0, 4).map((row) => row.itemId))
     expect(first.top_action_queue[0].advice).toContain('建议更换首图')
     expect(first.top_action_queue[0].stock).toBe('1')
     expect(first.top_action_queue[0].sales).toBe('-')
