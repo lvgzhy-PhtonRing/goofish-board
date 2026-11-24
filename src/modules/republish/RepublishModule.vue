@@ -306,7 +306,7 @@ onUnmounted(() => {
           <li><strong>高曝光低点击</strong>（曝光 ≥1000 且点击率 &lt;0.8%）：彻底重做首图+标题后重发</li>
           <li><strong>正常衰退</strong>（曝光 100–1000 且点击率 &lt;1.5%）：换首图/标题 + 小幅降价后重发</li>
           <li><strong>待激活</strong>（曝光 &lt;100）：先补全标题关键词 + 换首图，再重发</li>
-          <li><strong>点击健康</strong>（点击率 ≥1.5%）：不重发，建议改价格/详情</li>
+          <li><strong>点击健康</strong>（曝光 ≥1000 且点击率 ≥0.8%，或曝光 100–1000 且点击率 ≥1.5%）：不重发，建议改价格/详情</li>
         </ul>
         <p><strong>重发约束（平台规则）：</strong></p>
         <ul class="list-disc space-y-1 pl-5">
